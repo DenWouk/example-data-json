@@ -3,7 +3,7 @@ import path from 'path';
 import { ContentData } from '@/types/content'; 
 
 
-const CONTENT_PATH = path.join(process.cwd(), 'content/data.json');
+const CONTENT_PATH = path.join(process.cwd(), 'src/content/data.json');
 
 export async function getContent() {
   try {

@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { updateContent } from '@/lib/content';
+import { revalidatePath } from 'next/cache';
+import { ContentData } from '@/types/content'; 
 
 export async function POST(request: Request) {
   try {
-    const newContent = await request.json();
+    const newContent: ContentData = await request.json(); 
     const success = await updateContent(newContent);
 
     if (success) {
-      revalidatePath('/'); // Обновляем главную страницу (и другие, если нужно)
+      revalidatePath('/');
       return NextResponse.json({ message: 'Content updated successfully' }, { status: 200 });
     } else {
       return NextResponse.json({ message: 'Failed to update content' }, { status: 500 });

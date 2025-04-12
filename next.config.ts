@@ -1,18 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // images: {
+  //   domains: [], // Калі ты выкарыстоўваеш малюнкі з вонкавых даменаў, дадай іх сюды
+  //   unoptimized: false,
+  // },
+  poweredByHeader: false,
   output: "standalone",
-
-//   webpack: (config, { isServer }) => {
-//     if (!isServer) {
-//       config.module.rules.push({
-//         test: /\.json$/,
-//         use: "json-loader",
-//       });
-//     }
-
-//     return config;
-//   },
 };
 
 export default nextConfig;

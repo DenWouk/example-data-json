@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useEffect, ChangeEvent, FormEvent } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { ContentData, ContentSection } from "@/types/content";
+import ImageUploader from "./ImageUploader";
 
 export default function ContentEditor() {
   const [content, setContent] = useState<ContentData>({});
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
 
   useEffect(() => {
-    // Загрузка контента при монтировании компонента (на клиенте)
     const loadContent = async () => {
       try {
-        const response = await fetch("/api/get-content"); // Создайте API route для получения контента
+        const response = await fetch("/api/get-content");
         const data: ContentData = await response.json();
         setContent(data);
       } catch (error) {
@@ -25,16 +26,31 @@ export default function ContentEditor() {
     const { name, value } = event.target;
     const [section, field] = name.split(".");
 
+    setContent((prevContent: ContentData) => {
+      const updatedSection: ContentSection = {
+        ...(prevContent[section] || {}),
+        [field]: value,
+      };
+
+      return {
+        ...prevContent,
+        [section]: updatedSection,
+      };
+    });
+  };
+
+  const handleImageUpload = (section: string, imageUrl: string) => {
     setContent((prevContent: ContentData) => ({
       ...prevContent,
       [section]: {
         ...prevContent[section],
-        [field]: value,
+        image: imageUrl,
       },
     }));
+    setSelectedSection(null);
   };
 
-  const handleSubmit = async (event: FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
     try {
@@ -48,8 +64,6 @@ export default function ContentEditor() {
 
       if (response.ok) {
         alert("Контент успешно обновлен!");
-        // TODO:  Можно добавить уведомление об успехе и, возможно,
-        // выполнить revalidatePath('/') для обновления главной страницы.
       } else {
         alert("Ошибка при обновлении контента.");
       }
@@ -78,9 +92,19 @@ export default function ContentEditor() {
               </div>
             )
           )}
+          <button type="button" onClick={() => setSelectedSection(section)}>
+            Змяніць малюнак
+          </button>
+          {selectedSection === section && (
+            <ImageUploader
+              section={section}
+              onImageUpload={handleImageUpload}
+              onClose={() => setSelectedSection(null)}
+            />
+          )}
         </div>
       ))}
-      <button type="submit">Сохранить изменения</button>
+      <button type="submit">Захаваць змены</button>
     </form>
   );
 }

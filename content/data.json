@@ -1,0 +1,17 @@
+{
+  "home": {
+    "title": "Вітаем!!!",
+    "description": "Гэта галоўная старонка.",
+    "image": "/1744396579085-wolf-grey.jpeg"
+  },
+  "about": {
+    "title": "Пра нас",
+    "description": "Інфармацыя пра нашу кампанію.",
+    "image": "/about-us.jpg"
+  },
+  "contact": {
+    "title": "Кантакты",
+    "description": "Нашы кантактныя дадзеныя.",
+    "image": "/contact.jpg"
+  }
+}

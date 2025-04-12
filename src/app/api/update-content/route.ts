@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     if (success) {
       revalidatePath('/');
 
-      // Пересоздаем пустой файл restart.txt в папке tmp
+      // Пересоздаем пустой файл restart.txt в папке tmp (в dev режиме будет выдавать ошибку, можно сделать проверку чтобы эту ошибку не выдавало.)
       const restartFilePath = path.join(process.cwd(), 'tmp', 'restart.txt');
       try {
         await fs.writeFile(restartFilePath, '', { encoding: 'utf8' }); // Создаем пустой файл

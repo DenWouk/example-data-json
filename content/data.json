@@ -1,13 +1,13 @@
 {
   "home": {
-    "title": "Вітаем!!!",
+    "title": "Вітаем!",
     "description": "Гэта галоўная старонка.",
-    "image": "/1744396579085-wolf-grey.jpeg"
+    "image": "/1744492443891-wolf-black.jpeg"
   },
   "about": {
     "title": "Пра нас",
     "description": "Інфармацыя пра нашу кампанію.",
-    "image": "/about-us.jpg"
+    "image": "/1744492403217-wolf-black.jpeg"
   },
   "contact": {
     "title": "Кантакты",

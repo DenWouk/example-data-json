@@ -1,0 +1,7 @@
+{
+  "home": {
+    "title": "Welcome to Our Website!",
+    "description": "This is a simple website built with Next.js 15 and TypeScript.",
+    "image": "/images/1744919405885-wolf-grey.jpeg"
+  }
+}

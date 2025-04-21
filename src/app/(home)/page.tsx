@@ -1,26 +1,27 @@
-import { getContent } from "@/lib/content";
 import Image from "next/image";
+import { readContentData } from "@/lib/content-utils";
 
-export default async function Home() {
-  const content = await getContent();
-  const homeContent = content?.home || {};
+export default async function HomePage() {
+  // Получаем данные из JSON файла на сервере
+  const contentData = await readContentData();
+  const { title, description, image } = contentData.home;
 
   return (
-    <div>
-      <h1>{homeContent.title}</h1>
-      <p>{homeContent.description}</p>
-      {homeContent.image && (
-        <Image
-          src={homeContent.image}
-          alt={"Малюнак"}
-          width={200}
-          height={150}
-        />
-      )}
-    </div>
+    <main className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold mb-4">{title}</h1>
+        <div className="relative w-full h-64 md:h-80 mb-6 rounded-lg overflow-hidden">
+          <Image
+            src={image || "/placeholder.svg"}
+            alt={title}
+            width={300}
+            height={300}
+            priority
+            className="object-cover"
+          />
+        </div>
+        <p className="text-lg">{description}</p>
+      </div>
+    </main>
   );
 }
-
-export const revalidate = 3600;
-
-

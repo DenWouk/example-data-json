@@ -1,12 +1,25 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // images: {
-  //   domains: [], // Калі ты выкарыстоўваеш малюнкі з вонкавых даменаў, дадай іх сюды
-  //   unoptimized: false,
-  // },
-  poweredByHeader: false,
   output: "standalone",
+
+  // images: {
+  //   domains: ["wolfdev.pro", "localhost"],
+
+  //   unoptimized: true,
+  // },
+
+  // outputFileTracingRoot: process.cwd(),
+  // outputFileTracingIncludes: {
+  //   "/": ["public/**/*"],
+  // },
+
+  // eslint: {
+  //   ignoreDuringBuilds: true,
+  // },
+  // typescript: {
+  //   ignoreBuildErrors: true,
+  // },
 };
 
 export default nextConfig;

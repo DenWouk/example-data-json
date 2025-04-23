@@ -1,14 +1,13 @@
-import { readContentData } from "@/lib/content-utils"
-import AdminForm from "./admin-form"
+import { getHomeContent } from "@/lib/data";
+import AdminForm from "./admin-form";
 
 export default async function AdminPage() {
-  // Получаем данные из JSON файла на сервере
-  const contentData = await readContentData()
+  const content = await getHomeContent();
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold mb-6">Admin Panel</h1>
-      <AdminForm initialContent={contentData} />
+    <div className="max-w-4xl mx-auto p-8">
+      <h1 className="text-3xl font-bold mb-8">Admin Panel</h1>
+      <AdminForm initialContent={content} />
     </div>
-  )
+  );
 }

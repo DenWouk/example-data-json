@@ -3,89 +3,88 @@
 import type React from "react";
 import { useState, useRef } from "react";
 import Image from "next/image";
-import type { ContentData } from "@/content/data";
+import type { HomeContent } from "@/lib/data";
 import { useRouter } from "next/navigation";
 
 interface AdminFormProps {
-  initialContent: ContentData;
+  initialContent: HomeContent;
 }
 
 export default function AdminForm({ initialContent }: AdminFormProps) {
   const router = useRouter();
-  const [content, setContent] = useState<ContentData>(initialContent);
-  const [status, setStatus] = useState<string | null>(null);
-  const [uploading, setUploading] = useState<boolean>(false);
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleInputChange = (
-    page: keyof ContentData,
-    field: string,
-    value: string
+  const [content, setContent] = useState<Partial<Omit<HomeContent, "id">>>({
+    title: initialContent.title || "",
+    description: initialContent.description || "",
+    image: initialContent.image || "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [message, setMessage] = useState<string>("");
+  const [previewImage, setPreviewImage] = useState<string | null>(
+    initialContent.image
+  );
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
+    const { name, value } = e.target;
     setContent((prev) => ({
       ...prev,
-      [page]: {
-        ...prev[page],
-        [field]: value,
-      },
+      [name]: value,
     }));
+
+    if (name === "image") {
+      setPreviewImage(value || null);
+    }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
-    const validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-    if (!validTypes.includes(file.type)) {
-      setUploadStatus(
-        "Error: Please upload a valid image file (JPEG, PNG, WebP, or GIF)"
-      );
-      return;
-    }
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (typeof e.target?.result === "string") {
+        setPreviewImage(e.target.result);
+      }
+    };
+    reader.readAsDataURL(file);
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadStatus("Error: Image size should be less than 5MB");
-      return;
-    }
-
-    setUploading(true);
-    setUploadStatus("Uploading image...");
+    // Upload image
+    const formData = new FormData();
+    formData.append("image", file);
 
     try {
-      const formData = new FormData();
-      formData.append("image", file);
-
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || "Failed to upload image");
+        throw new Error("Failed to upload image");
       }
 
-      const data: { filePath: string } = await response.json();
-
-      // Update content with new image path
-      handleInputChange("home", "image", data.filePath);
-      setUploadStatus("Image uploaded successfully!");
+      const data = await response.json();
+      setContent((prev) => ({
+        ...prev,
+        image: data.imagePath,
+      }));
+      setMessage("Image uploaded successfully!");
     } catch (error) {
       if (error instanceof Error) {
-        setUploadStatus(`Error: ${error.message}`);
+        setMessage(`Error uploading image: ${error.message}`);
       } else {
-        setUploadStatus("An unknown error occurred during upload");
+        setMessage("An unknown error occurred during upload");
       }
-    } finally {
-      setUploading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setMessage("");
 
     try {
       const response = await fetch("/api/content", {
@@ -100,148 +99,136 @@ export default function AdminForm({ initialContent }: AdminFormProps) {
         throw new Error("Failed to update content");
       }
 
-      setStatus("Content updated successfully!");
-      router.refresh(); // Refresh the page to show updated content
+      setMessage("Content updated successfully!");
+
+      // Trigger revalidation
+      await fetch("/api/revalidate");
+      router.refresh();
     } catch (error) {
       if (error instanceof Error) {
-        setStatus(`Error: ${error.message}`);
+        setMessage(`Error: ${error.message}`);
       } else {
-        setStatus("An unknown error occurred");
+        setMessage("An unknown error occurred");
       }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleClearImage = () => {
+    setContent((prev) => ({
+      ...prev,
+      image: null,
+    }));
+    setPreviewImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
   return (
-    <>
-      {status && (
-        <div
-          className={`p-4 mb-4 rounded ${
-            status.includes("Error") ? "bg-red-100" : "bg-green-100"
-          }`}
-        >
-          {status}
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div>
+        <label htmlFor="title" className="block text-sm font-medium mb-1">
+          Title
+        </label>
+        <input
+          type="text"
+          id="title"
+          name="title"
+          value={content.title || ""}
+          onChange={handleChange}
+          className="w-full p-2 border rounded-md"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="description" className="block text-sm font-medium mb-1">
+          Description
+        </label>
+        <textarea
+          id="description"
+          name="description"
+          value={content.description || ""}
+          onChange={handleChange}
+          rows={4}
+          className="w-full p-2 border rounded-md"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="image" className="block text-sm font-medium mb-1">
+          Image URL
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            id="image"
+            name="image"
+            value={content.image || ""}
+            onChange={handleChange}
+            className="w-full p-2 border rounded-md"
+          />
+          <button
+            type="button"
+            onClick={handleClearImage}
+            className="px-3 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <label htmlFor="imageUpload" className="block text-sm font-medium mb-1">
+          Upload Image
+        </label>
+        <input
+          type="file"
+          id="imageUpload"
+          ref={fileInputRef}
+          accept="image/*"
+          onChange={handleImageChange}
+          className="w-full p-2 border rounded-md"
+        />
+      </div>
+
+      {previewImage && (
+        <div className="mt-4">
+          <p className="text-sm font-medium mb-1">Image Preview</p>
+          <div>
+            <Image
+              src={previewImage || "/placeholder.svg"}
+              alt="Preview"
+              width={300}
+              height={300}
+              className="rounded-lg object-contain border"
+            />
+          </div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="border p-4 rounded">
-          <h2 className="text-xl font-semibold mb-4">Home Page</h2>
-
-          <div className="mb-4">
-            <label htmlFor="home-title" className="block mb-1 font-medium">
-              Title
-            </label>
-            <input
-              id="home-title"
-              type="text"
-              value={content.home.title}
-              onChange={(e) =>
-                handleInputChange("home", "title", e.target.value)
-              }
-              className="w-full p-2 border rounded"
-              required
-            />
-          </div>
-
-          <div className="mb-4">
-            <label
-              htmlFor="home-description"
-              className="block mb-1 font-medium"
-            >
-              Description
-            </label>
-            <textarea
-              id="home-description"
-              value={content.home.description}
-              onChange={(e) =>
-                handleInputChange("home", "description", e.target.value)
-              }
-              className="w-full p-2 border rounded"
-              rows={4}
-              required
-            />
-          </div>
-
-          <div className="mb-4">
-            <label className="block mb-1 font-medium">Image</label>
-
-            {/* Current image preview */}
-            <div className="mb-3">
-              <p className="text-sm text-gray-500 mb-2">Current image:</p>
-              <div className="relative w-full h-40 border rounded overflow-hidden">
-                <Image
-                  src={content.home.image || "/placeholder.svg"}
-                  alt="Current image"
-                  width={300}
-                  height={300}
-                  className="object-contain"
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">{content.home.image}</p>
-            </div>
-
-            {/* Image upload */}
-            <div className="mt-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                id="home-image"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={handleImageUpload}
-                className="hidden"
-                disabled={uploading}
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50"
-              >
-                {uploading ? "Uploading..." : "Upload New Image"}
-              </button>
-
-              {uploadStatus && (
-                <p
-                  className={`mt-2 text-sm ${
-                    uploadStatus.includes("Error")
-                      ? "text-red-500"
-                      : "text-green-500"
-                  }`}
-                >
-                  {uploadStatus}
-                </p>
-              )}
-            </div>
-
-            {/* Manual image path input */}
-            <div className="mt-4">
-              <label htmlFor="home-image-path" className="block mb-1 text-sm">
-                Or enter image path manually:
-              </label>
-              <input
-                id="home-image-path"
-                type="text"
-                value={content.home.image}
-                onChange={(e) =>
-                  handleInputChange("home", "image", e.target.value)
-                }
-                placeholder="/images/your-image.jpg"
-                className="w-full p-2 border rounded text-sm"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Path should be relative to the public directory
-              </p>
-            </div>
-          </div>
+      {message && (
+        <div
+          className={`p-3 rounded-md ${
+            message.includes("Error")
+              ? "bg-red-100 text-red-700"
+              : "bg-green-100 text-green-700"
+          }`}
+        >
+          {message}
         </div>
+      )}
 
+      <div className="flex justify-end">
         <button
           type="submit"
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          disabled={isSubmitting}
+          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
         >
-          Update Content
+          {isSubmitting ? "Updating..." : "Update Content"}
         </button>
-      </form>
-    </>
+      </div>
+    </form>
   );
 }

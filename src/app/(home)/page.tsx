@@ -1,26 +1,31 @@
 import Image from "next/image";
-import { readContentData } from "@/lib/content-utils";
+import { getHomeContent } from "@/lib/data";
 
-export default async function HomePage() {
-  // Получаем данные из JSON файла на сервере
-  const contentData = await readContentData();
-  const { title, description, image } = contentData.home;
+export default async function Home() {
+  const content = await getHomeContent();
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-4">{title}</h1>
-        <div className="relative w-full h-64 md:h-80 mb-6 rounded-lg overflow-hidden">
-          <Image
-            src={image || "/placeholder.svg"}
-            alt={title}
-            width={300}
-            height={300}
-            priority
-            className="object-cover"
-          />
-        </div>
-        <p className="text-lg">{description}</p>
+    <main className="flex min-h-screen flex-col items-center justify-between p-24">
+      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
+        {content.title && (
+          <h1 className="text-4xl font-bold mb-4">{content.title}</h1>
+        )}
+
+        {content.description && (
+          <p className="text-xl mb-6">{content.description}</p>
+        )}
+
+        {content.image && (
+          <div className="mb-6">
+            <Image
+              src={content.image || "/placeholder.svg"}
+              alt={content.title || ""}
+              width={300}
+              height={300}
+              className="rounded-lg object-cover"
+            />
+          </div>
+        )}
       </div>
     </main>
   );

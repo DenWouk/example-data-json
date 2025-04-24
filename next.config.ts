@@ -9,16 +9,28 @@ const nextConfig: NextConfig = {
     "*.local-origin.dev",
   ],
 
-  // images: {
-  //   domains: ["wolfdev.pro", "localhost"],
+  images: {
+    domains: ["localhost", "wolfdev.pro"],
+    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "3000",
+        pathname: "/images/**",
+      },
+      {
+        protocol: "https",
+        hostname: "wolfdev.pro",
+        pathname: "/images/**",
+      },
+    ],
+  },
 
-  //   unoptimized: true,
-  // },
-
-  // outputFileTracingRoot: process.cwd(),
-  // outputFileTracingIncludes: {
-  //   "/": ["public/**/*"],
-  // },
+  outputFileTracingRoot: process.cwd(),
+  outputFileTracingIncludes: {
+    "/": ["public/**/*"],
+  },
 
   // eslint: {
   //   ignoreDuringBuilds: true,

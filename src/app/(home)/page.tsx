@@ -19,7 +19,7 @@ export default async function Home() {
           <div className="mb-6">
             <Image
               src={content.image || "/placeholder.svg"}
-              alt={content.title || ""}
+              alt={'image'}
               width={300}
               height={300}
               className="rounded-lg object-cover"

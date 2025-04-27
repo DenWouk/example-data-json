@@ -1,0 +1,12 @@
+{
+  "home": {
+    "title": "Hello World!",
+    "description": "Это описание домашней страницы, загруженное из JSON.",
+    "image": "image.jpeg"
+  },
+  "about": {
+    "title": "О нас",
+    "description": "Информация о нашей компании.",
+    "image": null
+  }
+}

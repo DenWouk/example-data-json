@@ -10,34 +10,54 @@ const nextConfig: NextConfig = {
   ],
 
   images: {
-    domains: ["localhost", "wolfdev.pro"],
-    unoptimized: true,
     remotePatterns: [
       {
-        protocol: "http",
-        hostname: "127.0.0.1",
-        port: "3000",
-        pathname: "/images/**",
+        // Разрешаем загрузку с нашего собственного сервера (localhost для разработки)
+        // В продакшене замени 'localhost' на твой домен
+        protocol: "http", // или https, если используешь SSL локально/в проде
+        hostname: "localhost",
+        port: "3000", // Укажи порт твоего dev сервера
+        pathname: "/api/media/**", // Разрешаем все пути внутри /api/media/
       },
+      // Добавь здесь паттерн для твоего продакшн домена
       {
-        protocol: "https",
-        hostname: "wolfdev.pro",
-        pathname: "/images/**",
+        protocol: "https", // Пример для продакшена
+        hostname: "wolfdev.pro", // Замени на свой домен
+        port: "", // Обычно порт не нужен для https
+        pathname: "/api/media/**",
       },
     ],
   },
 
-  outputFileTracingRoot: process.cwd(),
-  outputFileTracingIncludes: {
-    "/": ["public/**/*"],
-  },
+  // images: {
+  //   domains: ["localhost", "wolfdev.pro"],
+  //   unoptimized: true,
+  //   remotePatterns: [
+  //     {
+  //       protocol: "http",
+  //       hostname: "127.0.0.1",
+  //       port: "3000",
+  //       pathname: "/images/**",
+  //     },
+  //     {
+  //       protocol: "https",
+  //       hostname: "wolfdev.pro",
+  //       pathname: "/images/**",
+  //     },
+  //   ],
+  // },
 
-  // eslint: {
-  //   ignoreDuringBuilds: true,
+  // outputFileTracingRoot: process.cwd(),
+  // outputFileTracingIncludes: {
+  //   "/": ["public/**/*"],
   // },
-  // typescript: {
-  //   ignoreBuildErrors: true,
-  // },
+
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 };
 
 export default nextConfig;

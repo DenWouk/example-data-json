@@ -1,15 +1,14 @@
 // src/app/admin/page.tsx
-"use client"; // Это клиентский компонент
+"use client";
 
-import { useState, useEffect, FormEvent } from "react";
-import { getAdminContent, updateAdminContent } from "./actions"; // Импорт Server Actions
-import { PageContent } from "@/lib/content"; // Импорт интерфейса
+import { useState, useEffect, FormEvent, useRef } from "react"; // Добавили useRef
+import { getAdminContent, updateAdminContent } from "./actions";
+import { PageContent } from "@/lib/content";
 
-// Начальное состояние для формы
 const initialFormState: PageContent = {
   title: "",
   description: "",
-  image: "",
+  image: null, // Используем null по умолчанию
 };
 
 export default function AdminPage() {
@@ -18,23 +17,20 @@ export default function AdminPage() {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null); // Реф для сброса поля файла
 
-  // Загрузка данных при монтировании компонента
+  // Загрузка данных при монтировании компонента (без изменений)
   useEffect(() => {
     async function loadContent() {
       setIsLoading(true);
       setError(null);
       try {
         const content = await getAdminContent();
-        // Устанавливаем данные для 'home' страницы в форму
         if (content.home) {
           setFormData(content.home);
         } else {
-          // Если данных для home нет, устанавливаем пустые или значения по умолчанию
           setFormData(initialFormState);
-          console.warn(
-            "No 'home' content found in content.json for admin form."
-          );
+          console.warn("No 'home' content found for admin form.");
         }
       } catch (err) {
         console.error("Failed to load content for admin:", err);
@@ -44,10 +40,10 @@ export default function AdminPage() {
       }
     }
     loadContent();
-  }, []); // Пустой массив зависимостей = запуск только один раз при монтировании
+  }, []);
 
-  // Обработчик изменений в полях формы
-  const handleChange = (
+  // Обработчик изменений текстовых полей (без изменений)
+  const handleTextChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
@@ -57,47 +53,62 @@ export default function AdminPage() {
     }));
   };
 
-  // Обработчик отправки формы
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); // Предотвращаем стандартную отправку формы
+    e.preventDefault();
+    const formElement = e.currentTarget; // <--- Получаем ссылку на форму ЗДЕСЬ
     setIsSaving(true);
-    setStatusMessage("");
+    setStatusMessage('');
     setError(null);
 
-    try {
-      // Вызываем Server Action для обновления контента 'home'
-      const result = await updateAdminContent("home", formData);
+    // Создаем FormData из сохраненной ссылки
+    const currentFormData = new FormData(formElement);
 
-      if (result.success) {
-        setStatusMessage(result.message);
-        // Можно перезагрузить данные формы после успешного сохранения,
-        // но обычно это не требуется, т.к. данные уже актуальны
-        // const updatedContent = await getAdminContent();
-        // setFormData(updatedContent.home);
-      } else {
-        setError(result.message);
-      }
+    try {
+        // Вызываем Server Action, передавая FormData и ключ страницы
+        const result = await updateAdminContent('home', currentFormData); // <--- await здесь
+
+        if (result.success) {
+            setStatusMessage(result.message);
+            if (result.updatedContent) {
+                setFormData(result.updatedContent);
+            }
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+             // Сбрасываем чекбокс удаления, используя сохраненную ссылку
+             const removeCheckbox = formElement.elements.namedItem('removeImage') as HTMLInputElement; // <--- Используем formElement
+             if (removeCheckbox) {
+                removeCheckbox.checked = false;
+             }
+
+        } else {
+            setError(result.message);
+        }
     } catch (err: any) {
-      console.error("Failed to submit form:", err);
-      setError(`An unexpected error occurred: ${err.message}`);
+        console.error('Failed to submit form:', err);
+        // Важно: Не пытаемся получить доступ к e.currentTarget здесь
+        setError(`An unexpected error occurred: ${err.message}`);
     } finally {
-      setIsSaving(false);
+        setIsSaving(false);
     }
-  };
+};
 
   if (isLoading) {
     return <div>Loading content editor...</div>;
   }
 
   if (error && !isSaving) {
-    // Показываем ошибку загрузки, если не идет сохранение
     return <div>Error: {error}</div>;
   }
 
   return (
     <div>
       <h1>Edit Home Page Content</h1>
-      <form onSubmit={handleSubmit}>
+      {/* Добавляем enctype для загрузки файлов */}
+      <form onSubmit={handleSubmit} encType="multipart/form-data">
+        {/* Скрытое поле для передачи текущего имени файла */}
+        <input type="hidden" name="currentImage" value={formData.image ?? ""} />
+
         <div>
           <label htmlFor="title">Title:</label>
           <br />
@@ -106,7 +117,7 @@ export default function AdminPage() {
             id="title"
             name="title"
             value={formData.title}
-            onChange={handleChange}
+            onChange={handleTextChange} // Используем старый обработчик для текста
             required
             style={{ width: "300px" }}
           />
@@ -119,44 +130,74 @@ export default function AdminPage() {
             id="description"
             name="description"
             value={formData.description}
-            onChange={handleChange}
+            onChange={handleTextChange} // Используем старый обработчик для текста
             rows={5}
             required
             style={{ width: "300px" }}
           />
         </div>
         <br />
+
+        {/* --- Секция Изображения --- */}
         <div>
-          <label htmlFor="image">Image Filename:</label>
+          <label htmlFor="imageFile">Upload New Image (Optional):</label>
           <br />
+          {/* Отображение текущего имени файла */}
+          {formData.image && (
+            <p>
+              Current image: <strong>{formData.image}</strong>
+              {/* Опционально: Показ превью, если файл существует */}
+              <br />
+              {/* <Image src={`/api/media/${formData.image}`} width={100} height={100} alt="Current preview" /> */}
+            </p>
+          )}
+          {!formData.image && <p>No image currently set.</p>}
+
           <input
-            type="text"
-            id="image"
-            name="image"
-            value={formData.image ?? ""} // Используем ?? '' для случая null/undefined
-            onChange={handleChange}
-            placeholder="e.g., my-image.jpg (must be in /media folder)"
-            style={{ width: "300px" }}
+            type="file"
+            id="imageFile"
+            name="imageFile" // Имя поля для Server Action
+            accept="image/png, image/jpeg, image/webp, image/gif" // Ограничение типов на клиенте
+            ref={fileInputRef} // Добавляем реф для сброса
+            onChange={() => {
+              // Опционально: сбросить сообщение об ошибке/статусе при выборе файла
+              setError(null);
+              setStatusMessage("");
+            }}
           />
-          <small>
-            {" "}
-            Enter filename only. Upload image to the '/media' folder manually
-            for now.
-          </small>
+          <small>Max 5MB. Allowed types: JPG, PNG, WEBP, GIF.</small>
         </div>
         <br />
-        <button type="submit" disabled={isSaving}>
+
+        {/* Чекбокс для удаления текущего изображения */}
+        {formData.image && ( // Показываем только если есть текущее изображение
+          <div>
+            <label>
+              <input type="checkbox" name="removeImage" />
+              Remove Current Image
+            </label>
+            <small>
+              {" "}
+              (Will be removed on update if checked and no new image is
+              uploaded)
+            </small>
+          </div>
+        )}
+        <br />
+        {/* --- Конец Секции Изображения --- */}
+
+        <button type="submit" disabled={isSaving || isLoading}>
           {isSaving ? "Saving..." : "Update Content & Revalidate Cache"}
         </button>
       </form>
-      {/* Сообщения о статусе */}
+
       {statusMessage && <p style={{ color: "green" }}>{statusMessage}</p>}
-      {error && isSaving && <p style={{ color: "red" }}>Error: {error}</p>}{" "}
-      {/* Показываем ошибку сохранения */}
+      {error && <p style={{ color: "red" }}>Error: {error}</p>}
+
       <hr />
       <p>
-        <strong>Note:</strong> Currently, you need to manually upload image
-        files to the <code>media</code> folder on the server.
+        <strong>Note:</strong> Uploading a new image will replace the current
+        one. Check 'Remove' to delete the image without uploading a new one.
       </p>
     </div>
   );

@@ -6,28 +6,26 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "deploy": "next build && cp -r media .next/standalone/ && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/",
-    "lint": "next lint"
+    "deploy": "next build && cp -r media .next/standalone/ && mkdir -p .next/standalone/public && cp -r public/content .next/standalone/public/ && cp -r .next/static .next/standalone/.next/ && rm -rf next-app && cp -r .next/standalone next-app && rm -rf next-app/node_modules",
+    "standalone": "node .next/standalone/server.js",
+    "lint": "next lint",
+    "generate-types": "quicktype public/content/content.json -o src/lib/contentTypes.ts --just-types"
   },
   "dependencies": {
-    "better-sqlite3": "^11.9.1",
     "mime-types": "^3.0.1",
     "next": "15.2.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "sqlite3": "^5.1.7",
-    "uuid": "^11.1.0",
-    "zod": "^3.24.3"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/mime-types": "^2.1.4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
+    "quicktype": "^23.1.1",
     "typescript": "^5"
   }
 }

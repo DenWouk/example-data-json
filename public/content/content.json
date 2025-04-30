@@ -1,12 +1,23 @@
 {
   "home": {
-    "title": "Hello World!",
-    "description": "Это описание домашней страницы, загруженное из JSON.",
-    "image": "1745954457708-wolf_grey.jpeg"
+    "section1": {
+      "title": "Hello World 1!!!",
+      "description1": "Это описание домашней страницы 1!!!",
+      "image1": "1746046419698-wolf-grey.jpeg",
+      "image2": "1746039919698-wolf-black.jpeg"
+    },
+    "section2": {
+      "title": "Hello World 2!!!",
+      "description1": "Это описание домашней страницы 2!",
+      "image1": "1746041557128-wolf-grey.jpeg"
+    }
   },
   "about": {
-    "title": "О нас",
-    "description": "Информация о нашей компании.",
-    "image": null
+    "section1": {
+      "title": "О нас",
+      "description1": "Информация о нашей компании 1!",
+      "description2": "Информация о нашей компании 2",
+      "image1": "1746041411534-wolf-grey.jpeg"
+    }
   }
 }

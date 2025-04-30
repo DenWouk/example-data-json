@@ -14,17 +14,12 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // allowedDevOrigins: [
-  //   "localhost",
-  //   "127.0.0.1",
-  //   "local-origin.dev",
-  //   "*.local-origin.dev",
-  // ],
-
-  // outputFileTracingRoot: process.cwd(),
-  // outputFileTracingIncludes: {
-  //   "/": ["public/**/*"],
-  // },
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    "local-origin.dev",
+    "*.local-origin.dev",
+  ],
 
   eslint: {
     ignoreDuringBuilds: true,

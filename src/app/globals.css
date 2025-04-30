@@ -30,7 +30,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 100vh;
+  /* min-height: 100vh; */
   background-color: var(--background-color1);
   font-family: Arial, Helvetica, sans-serif;
   color: var(--color1);
@@ -39,11 +39,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-@supports (min-height: 100dvh) {
+/* @supports (min-height: 100dvh) {
   body {
     min-height: 100dvh;
   }
-}
+} */
 
 * {
   box-sizing: border-box;

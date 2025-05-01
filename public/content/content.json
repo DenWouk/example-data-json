@@ -17,7 +17,9 @@
       "title": "О нас",
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
-      "image1": "1746041411534-wolf-grey.jpeg"
+      "description3": "Информация о нашей компании 3",
+      "image1": "1746041411534-wolf-grey.jpeg",
+      "image2": "1746116181226-wolf-black.jpeg"
     }
   }
 }

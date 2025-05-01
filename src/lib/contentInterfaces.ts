@@ -38,29 +38,30 @@ export type FieldKey<
   S extends SectionKey<P>
 > = keyof AppContent[P][S];
 
-// --- Конкретные интерфейсы (ТЕПЕРЬ ТОЛЬКО ДЛЯ ПРИМЕРА/ДОКУМЕНТАЦИИ) ---
-// Логика больше не будет жестко на них опираться, а будет динамической.
-// Но они полезны для понимания структуры в content.json.
+// // --- Конкретные интерфейсы (ТЕПЕРЬ ТОЛЬКО ДЛЯ ПРИМЕРА/ДОКУМЕНТАЦИИ) ---
+// // Логика больше не будет жестко на них опираться, а будет динамической.
+// // Но они полезны для понимания структуры в content.json.
 
-// Пример структуры секции для home/section-1
-export interface HomeSection1Content extends SectionContent {
-  title: string;
-  "description1": string;
-  "image1": string;
-  "image2": string;
-}
+// // Пример структуры секции для home/section-1
+// export interface HomeSection1Content extends SectionContent {
+//   title: string;
+//   "description1": string;
+//   "image1": string;
+//   "image2": string;
+// }
 
-// Пример структуры секции для home/section-2
-export interface HomeSection2Content extends SectionContent {
-  title: string;
-  "description1": string;
-  "image1": string;
-}
+// // Пример структуры секции для home/section-2
+// export interface HomeSection2Content extends SectionContent {
+//   title: string;
+//   "description1": string;
+//   "image1": string;
+// }
 
-// Пример структуры секции для about/section-1
-export interface AboutSection1Content extends SectionContent {
-  title: string;
-  "description1": string;
-  "description2": string;
-  "image1": string;
-}
+// // Пример структуры секции для about/section-1
+// export interface AboutSection1Content extends SectionContent {
+//   title: string;
+//   "description1": string;
+//   "description2": string;
+// //   "description3": string;
+//   "image1": string;
+// }

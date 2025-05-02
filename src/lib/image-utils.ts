@@ -1,15 +1,18 @@
-// src/lib/imageUtils.ts
-import { checkMediaFileExists } from "./fsUtils";
+// src/lib/image-utils.ts
+import { checkMediaFileExists } from "./fs-utils";
+
 
 /**
  * Интерфейс для результата обработки пути к изображению.
  */
-export interface PreparedImageData {
+interface PreparedImageData {
   /** URL для использования в src тега Image, или null если изображение не должно отображаться. */
   url: string | null;
   /** Существует ли файл изображения физически? */
   exists: boolean;
 }
+
+
 
 /**
  * Обрабатывает путь к изображению из контента, проверяет его существование

@@ -10,14 +10,14 @@ import {
   useCallback,
 } from "react";
 import Image from "next/image"; // Нужен для превью
+import { AppContent, PageKey, SectionContent } from "../../types/types";
 import { getAdminContent, updateSectionContent } from "./actions";
-import { AppContent, PageKey, SectionContent } from "@/lib/contentInterfaces";
 import {
   generateLabel,
   isImageField,
   inferInputElement,
   createEmptySectionContent,
-} from "@/lib/contentUtils";
+} from "@/lib/content-utils";
 // Импорт prepareImageData НЕ нужен на клиенте
 // import { prepareImageData } from '@/lib/imageUtils';
 

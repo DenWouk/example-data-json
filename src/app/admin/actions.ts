@@ -1,17 +1,12 @@
 // src/app/admin/actions.ts
 "use server";
 
-import { revalidatePath } from "next/cache";
-// Импортируем типы из выделенного файла
-import { AppContent, PageKey, SectionContent } from "@/lib/contentInterfaces";
-// Импортируем функции чтения/записи контента
-import { getContent, writeContent } from "@/lib/content";
-// Системные модули
 import fs from "fs/promises";
 import path from "path";
-// Утилиты
-import { getMediaFilePath } from "@/lib/fsUtils"; // Утилита для путей медиа
-import { isImageField } from "@/lib/contentUtils"; // Утилита для проверки ключа
+import { revalidatePath } from "next/cache";
+import { AppContent, PageKey, SectionContent } from "../../types/types";
+import { isImageField } from "@/lib/content-utils"; // Утилита для проверки ключа
+import { getContent, getMediaFilePath, writeContent } from "@/lib/fs-utils";
 
 // --- Константы и хелперы ---
 const mediaFolderPath = path.join(process.cwd(), "media");

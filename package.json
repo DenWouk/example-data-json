@@ -6,14 +6,14 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "deploy": "next build && cp -r media .next/standalone/ && mkdir -p .next/standalone/public && cp -r public/content .next/standalone/public/ && cp -r .next/static .next/standalone/.next/ && rm -rf next-app && cp -r .next/standalone next-app && rm -rf next-app/node_modules",
+    "deploy": "next build&& cp -r media .next/standalone/ && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && rm -rf next-app && cp -r .next/standalone next-app && rm -rf next-app/node_modules",
     "standalone": "node .next/standalone/server.js",
     "lint": "next lint",
     "generate-types": "quicktype public/content/content.json -o src/lib/contentTypes.ts --just-types"
   },
   "dependencies": {
     "mime-types": "^3.0.1",
-    "next": "15.2.4",
+    "next": "15.3.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

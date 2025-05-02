@@ -1,15 +1,15 @@
 {
   "home": {
     "section1": {
-      "title": "Hello World 1!!!",
+      "title": "Hello World 1!",
       "description1": "Это описание домашней страницы 1!!!",
-      "image1": "1746046419698-wolf-grey.jpeg",
-      "image2": "1746039919698-wolf-black.jpeg"
+      "image1": "1746215240259-wolf-grey.jpeg",
+      "image2": "1746204817732-wolf-black.jpeg"
     },
     "section2": {
       "title": "Hello World 2!!!",
       "description1": "Это описание домашней страницы 2!",
-      "image1": "1746041557128-wolf-grey.jpeg"
+      "image1": "1746200233584-wolf-grey.jpeg"
     }
   },
   "about": {
@@ -18,8 +18,8 @@
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
       "description3": "Информация о нашей компании 3",
-      "image1": "1746041411534-wolf-grey.jpeg",
-      "image2": "1746116181226-wolf-black.jpeg"
+      "image1": "1746215289157-wolf-black.jpeg",
+      "image2": "1746201296124-gemini_generated_image_ttimmnttimmnttim.png"
     }
   }
 }

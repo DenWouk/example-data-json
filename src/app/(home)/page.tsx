@@ -1,13 +1,15 @@
-// src/app/page.tsx
+// src/app/(home)/page.tsx
 import Image from "next/image";
-import { getContent } from "@/lib/content";
-import { prepareImageData } from "@/lib/imageUtils"; // Импортируем новую утилиту
+import { prepareImageData } from "@/lib/image-utils"; // Импортируем новую утилиту
+import { getContent } from "@/lib/fs-utils";
 
 export default async function HomePage() {
   const content = await getContent();
   const homeContent = content.home;
   const section1 = homeContent.section1;
   const section2 = homeContent.section2;
+
+  console.log(content)
 
   // Используем новую утилиту для получения данных изображения
   // Передаем путь к файлу и ключ 'home' для контекста логов

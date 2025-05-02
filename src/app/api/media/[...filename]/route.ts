@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import mime from "mime-types";
-import { getMediaFilePath } from "@/lib/fsUtils";
+import { getMediaFilePath } from "@/lib/fs-utils";
 
 export async function GET(
   request: NextRequest,

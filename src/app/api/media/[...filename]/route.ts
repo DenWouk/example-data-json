@@ -1,5 +1,5 @@
 // src/app/api/media/[...filename]/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import fs from "fs/promises";
 // Не импортируем path, будем использовать basename внутри getSafeMediaFilePath
 import mime from "mime-types";
@@ -14,11 +14,11 @@ interface RouteContext {
 }
 
 export async function GET(
-  request: NextRequest,
   context: RouteContext // Убрали Promise<>, params доступны синхронно
 ) {
   // Параметры доступны сразу в context.params
-  const filenameSegments = context.params.filename;
+  const params = await context.params;
+  const filenameSegments = params.filename;
 
   if (
     !filenameSegments ||

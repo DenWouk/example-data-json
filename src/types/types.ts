@@ -1,26 +1,7 @@
-export interface SectionContent {
-  [fieldKey: string]: string;
-}
+// src/types/types.ts
 
-export interface PageData {
-  [sectionKey: string]: SectionContent; // Ключи и структура секций динамические
-}
-
-export interface AppContent {
-  [pageKey: string]: PageData;
-}
-
-/** Ключи страниц (home, about, ...), получаемые из AppContent */
-export type PageKey = keyof AppContent;
-
-/** Ключи секций внутри страницы */
-export type SectionKey<P extends PageKey> = keyof AppContent[P];
-
-/** Ключи полей внутри секции */
-export type FieldKey<
-  P extends PageKey,
-  S extends SectionKey<P>
-> = keyof AppContent[P][S];
+// --- УДАЛЕНЫ общие типы AppContent, PageData, SectionContent ---
+// --- УДАЛЕНЫ общие типы PageKey, SectionKey, FieldKey ---
 
 // --- START OF GENERATED SpecificAppContent INTERFACE ---
 /**
@@ -29,7 +10,35 @@ export type FieldKey<
  * ВСЕ поля считаются обязательными строками.
  * Не редактируйте этот интерфейс вручную, он будет перезаписан.
  */
-export interface SpecificAppContent {
+
+// --- END OF GENERATED SpecificAppContent INTERFACE ---
+
+// --- Тип для ключей страниц, основанный на SpecificAppContent ---
+export type SpecificPageKey = keyof AppContent;
+
+// --- Тип для ключей секций внутри КОНКРЕТНОЙ страницы ---
+// Пример: SectionKeyForPage<'home'> будет 'section1' | 'section2'
+export type SectionKeyForPage<P extends SpecificPageKey> = keyof AppContent[P];
+
+// --- Тип для ключей полей внутри КОНКРЕТНОЙ секции КОНКРЕТНОЙ страницы ---
+// Пример: FieldKeyForSection<'home', 'section1'> будет 'title' | 'description1' | 'image1' | 'image2'
+export type FieldKeyForSection<
+  P extends SpecificPageKey,
+  S extends SectionKeyForPage<P>
+> = keyof AppContent[P][S];
+
+// --- Тип для данных ОДНОЙ секции (все еще полезен для формы админки) ---
+// Используем Record<string, string> вместо SectionContent
+export type SectionDataType = Record<string, string>;
+
+// --- START OF GENERATED AppContent INTERFACE ---
+/**
+ * ВНИМАНИЕ: Этот интерфейс генерируется автоматически скриптом generate-types.ts
+ * Он отражает ТОЧНУЮ структуру вашего файла public/content/content.json.
+ * ВСЕ поля считаются обязательными строками.
+ * Не редактируйте этот интерфейс вручную, он будет перезаписан.
+ */
+export interface AppContent {
   "home": {
     "section1": {
       "title": string;
@@ -55,4 +64,4 @@ export interface SpecificAppContent {
     };
   };
 }
-// --- END OF GENERATED SpecificAppContent INTERFACE ---
+// --- END OF GENERATED AppContent INTERFACE ---

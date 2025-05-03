@@ -2,7 +2,6 @@
 import Image from "next/image";
 import { prepareImageData } from "@/lib/image-utils";
 import { getContent } from "@/lib/fs-utils";
-import { SpecificAppContent } from "@/types/types";
 
 export default async function HomePage() {
   const content = await getContent(); // getContent уже возвращает нормализованный AppContent или {}
@@ -23,13 +22,13 @@ export default async function HomePage() {
 
   return (
     <>
-      {/* <h1>{currentContent.home.section1.title}</h1> */}
+      <h1>{content.home.section1.title}</h1>
       <p>{section1.description1}</p>
 
       {imageDataS1I1.url && (
         <Image
           src={imageDataS1I1.url}
-          alt={section1.title || "Section 1 Image 1"} // Более осмысленный alt
+          alt={"image"} // Более осмысленный alt
           width={300}
           height={300}
           style={{ objectFit: "cover", margin: "5px" }} // Добавим стиль

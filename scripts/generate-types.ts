@@ -1,6 +1,6 @@
 // scripts/generate-types.ts
-const fs = require('fs').promises; // Получаем промисы из fs
-const path = require('path');
+const fs = require("fs").promises; // Получаем промисы из fs
+const path = require("path");
 
 // --- Конфигурация ---
 const contentFilePath = path.join(
@@ -10,7 +10,7 @@ const contentFilePath = path.join(
   "content.json"
 );
 const typesFilePath = path.join(process.cwd(), "src", "types", "types.ts");
-const generatedInterfaceName = "SpecificAppContent"; // Имя генерируемого интерфейса
+const generatedInterfaceName = "AppContent"; // Имя генерируемого интерфейса
 const startMarker = `// --- START OF GENERATED ${generatedInterfaceName} INTERFACE ---`;
 const endMarker = `// --- END OF GENERATED ${generatedInterfaceName} INTERFACE ---`;
 // ---
@@ -36,7 +36,7 @@ function isSimpleValue(value: unknown): boolean {
  * @returns Строка с кодом интерфейса TypeScript.
  */
 function buildInterfaceString(jsonObject: Record<string, any>): string {
-  let interfaceString = `/**\n * ВНИМАНИЕ: Этот интерфейс генерируется автоматически скриптом generate-specific-types.ts\n * Он отражает ТОЧНУЮ структуру вашего файла public/content/content.json.\n * ВСЕ поля считаются обязательными строками.\n * Не редактируйте этот интерфейс вручную, он будет перезаписан.\n */\n`;
+  let interfaceString = `/**\n * ВНИМАНИЕ: Этот интерфейс генерируется автоматически скриптом generate-types.ts\n * Он отражает ТОЧНУЮ структуру вашего файла public/content/content.json.\n * ВСЕ поля считаются обязательными строками.\n * Не редактируйте этот интерфейс вручную, он будет перезаписан.\n */\n`;
   interfaceString += `export interface ${generatedInterfaceName} {\n`;
 
   // Итерация по страницам (home, about, ...)
@@ -45,7 +45,7 @@ function buildInterfaceString(jsonObject: Record<string, any>): string {
     const pageData = jsonObject[pageKey];
     if (typeof pageData !== "object" || pageData === null) {
       console.warn(
-        `[generate-specific-types] Warning: Page '${pageKey}' in content.json is not an object. Skipping.`
+        `[generate-types] Warning: Page '${pageKey}' in content.json is not an object. Skipping.`
       );
       continue;
     }
@@ -59,7 +59,7 @@ function buildInterfaceString(jsonObject: Record<string, any>): string {
       const sectionData = pageData[sectionKey];
       if (typeof sectionData !== "object" || sectionData === null) {
         console.warn(
-          `[generate-specific-types] Warning: Section '${pageKey}.${sectionKey}' in content.json is not an object. Skipping.`
+          `[generate-types] Warning: Section '${pageKey}.${sectionKey}' in content.json is not an object. Skipping.`
         );
         continue;
       }
@@ -76,7 +76,7 @@ function buildInterfaceString(jsonObject: Record<string, any>): string {
         // Проверка: Убедимся, что значение поля не объект/массив (как договоренность)
         if (!isSimpleValue(fieldValue)) {
           console.warn(
-            `[generate-specific-types] Warning: Field '${pageKey}.${sectionKey}.${fieldKey}' has a complex value (object/array). Assuming 'string' type, but check your content.json.`
+            `[generate-types] Warning: Field '${pageKey}.${sectionKey}.${fieldKey}' has a complex value (object/array). Assuming 'string' type, but check your content.json.`
           );
         }
 
@@ -97,7 +97,7 @@ function buildInterfaceString(jsonObject: Record<string, any>): string {
  */
 async function generateAndWriteTypes() {
   console.log(
-    `[generate-specific-types] Starting type generation from ${path.basename(
+    `[generate-types] Starting type generation from ${path.basename(
       contentFilePath
     )}...`
   );
@@ -109,7 +109,7 @@ async function generateAndWriteTypes() {
       contentJsonString = await fs.readFile(contentFilePath, "utf-8");
     } catch (readError: any) {
       console.error(
-        `[generate-specific-types] Error reading content file at ${contentFilePath}: ${readError.message}`
+        `[generate-types] Error reading content file at ${contentFilePath}: ${readError.message}`
       );
       process.exit(1); // Выход с ошибкой
     }
@@ -129,7 +129,7 @@ async function generateAndWriteTypes() {
       }
     } catch (parseError: any) {
       console.error(
-        `[generate-specific-types] Error parsing JSON from ${contentFilePath}: ${parseError.message}`
+        `[generate-types] Error parsing JSON from ${contentFilePath}: ${parseError.message}`
       );
       process.exit(1); // Выход с ошибкой
     }
@@ -145,12 +145,12 @@ async function generateAndWriteTypes() {
       if (readTypesError.code !== "ENOENT") {
         // Игнорируем, если файла просто нет
         console.error(
-          `[generate-specific-types] Error reading types file at ${typesFilePath}: ${readTypesError.message}`
+          `[generate-types] Error reading types file at ${typesFilePath}: ${readTypesError.message}`
         );
         process.exit(1);
       }
       console.log(
-        `[generate-specific-types] Types file ${typesFilePath} not found. Creating a new one.`
+        `[generate-types] Types file ${typesFilePath} not found. Creating a new one.`
       );
     }
 
@@ -165,7 +165,7 @@ async function generateAndWriteTypes() {
     if (startIndex !== -1 && endIndex !== -1 && startIndex < endIndex) {
       // Маркеры найдены, заменяем содержимое между ними
       console.log(
-        `[generate-specific-types] Found existing generated interface. Replacing...`
+        `[generate-types] Found existing generated interface. Replacing...`
       );
       const before = existingTypesContent.substring(0, startIndex);
       const after = existingTypesContent.substring(endIndex + endMarker.length);
@@ -173,7 +173,7 @@ async function generateAndWriteTypes() {
     } else {
       // Маркеры не найдены или некорректны, добавляем в конец
       console.log(
-        `[generate-specific-types] No existing generated interface found or markers invalid. Appending...`
+        `[generate-types] No existing generated interface found or markers invalid. Appending...`
       );
       // Добавляем пару пустых строк перед новым блоком для разделения
       finalTypesContent =
@@ -184,18 +184,18 @@ async function generateAndWriteTypes() {
     try {
       await fs.writeFile(typesFilePath, finalTypesContent, "utf-8");
       console.log(
-        `[generate-specific-types] Successfully updated ${typesFilePath} with interface ${generatedInterfaceName}.`
+        `[generate-types] Successfully updated ${typesFilePath} with interface ${generatedInterfaceName}.`
       );
     } catch (writeError: any) {
       console.error(
-        `[generate-specific-types] Error writing updated types file to ${typesFilePath}: ${writeError.message}`
+        `[generate-types] Error writing updated types file to ${typesFilePath}: ${writeError.message}`
       );
       process.exit(1);
     }
   } catch (error: any) {
     // Общая обработка непредвиденных ошибок
     console.error(
-      `[generate-specific-types] An unexpected error occurred: ${error.message}`
+      `[generate-types] An unexpected error occurred: ${error.message}`
     );
     process.exit(1);
   }

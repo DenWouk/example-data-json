@@ -1,13 +1,13 @@
 // src/lib/fs-utils.ts
 import fs from "fs/promises";
 import path from "path";
-import { createDefaultAppContent, normalizeAppContent } from "./content-utils";
+// Импортируем ТОЛЬКО SpecificAppContent
 import { AppContent } from "@/types/types";
 
+// --- Константы путей ---
 const mediaFolderPath = path.join(process.cwd(), "media");
-const contentFolderPath = path.join(process.cwd(), "public", "content"); // Папка для JSON
+const contentFolderPath = path.join(process.cwd(), "public", "content");
 const contentFilePath = path.join(contentFolderPath, "content.json");
-// const exContentFilePath = path.join(contentFolderPath, 'ex-content.json'); // Путь к файлу бэкапа (оставлен, но не используется в actions)
 
 // --- Функции для медиа ---
 
@@ -75,10 +75,9 @@ export async function safeUnlink(
     ) {
       // Файл не найден, это ожидаемо в некоторых случаях, просто игнорируем
     } else {
-      // Логируем и пробрасываем другие ошибки
+      // Логируем другие ошибки
       console.error(`Error deleting file ${filePath || filename}:`, error);
-      // Не бросаем ошибку дальше, чтобы не прерывать основной процесс, если это не критично
-      // throw error; // Раскомментировать, если ошибка удаления должна прервать операцию
+      // Не бросаем ошибку дальше в этом случае
     }
   }
 }
@@ -110,69 +109,90 @@ export async function safeRename(
 
 // --- Функции для контента ---
 
-/** Читает основной файл контента */
-export async function readContentFile(): Promise<string> {
-  return fs.readFile(contentFilePath, "utf-8");
-}
-
-/** Читает файл бэкапа контента (возвращает null если нет) */
-/* // Функция оставлена, но не используется в текущей логике actions.ts
-export async function readExContentFile(): Promise<string | null> {
-    try {
-        return await fs.readFile(exContentFilePath, 'utf-8');
-    } catch (error: unknown) {
-        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
-            return null; // Файла бэкапа еще нет
-        }
-        console.error("Error reading ex-content file:", error);
-        throw error; // Другие ошибки чтения пробрасываем
-    }
-} */
-
-/** Записывает основной файл контента */
-export async function writeContentFile(data: string): Promise<void> {
-  await fs.writeFile(contentFilePath, data, "utf-8");
-}
-
-/** Записывает файл бэкапа контента */
-/* // Функция оставлена, но не используется в текущей логике actions.ts
-export async function writeExContentFile(data: string): Promise<void> {
-    await fs.writeFile(exContentFilePath, data, 'utf-8');
-} */
-
-// --- Чтение контента ---
+/**
+ * Читает и парсит файл content.json.
+ * Возвращает Promise<SpecificAppContent> или выбрасывает ошибку при чтении/парсинге/невалидной структуре.
+ * НЕ возвращает пустой объект {} в случае ошибки.
+ */
 export async function getContent(): Promise<AppContent> {
+  let fileContent: string;
   try {
-    const fileContent = await fs.readFile(contentFilePath, "utf-8");
-    const data = JSON.parse(fileContent);
-    // Добавим более строгую проверку, что это объект, а не массив или null
-    if (typeof data !== "object" || data === null || Array.isArray(data)) {
-      throw new Error(
-        "Invalid content structure: Root level must be an object."
-      );
-    }
-    return normalizeAppContent(data); // Нормализуем при чтении
-  } catch (error: unknown) {
-    console.error("Error reading or parsing content file:", error);
-    console.warn("Returning empty content structure due to error.");
-    // Возвращаем пустой объект, чтобы приложение не падало полностью
-    return createDefaultAppContent();
+    fileContent = await fs.readFile(contentFilePath, "utf-8");
+    console.log(`[getContent] Successfully read ${contentFilePath}`);
+  } catch (readError: unknown) {
+    console.error(
+      `[getContent] Error reading content file (${contentFilePath}):`,
+      readError
+    );
+    // Перебрасываем ошибку, не возвращаем {}
+    throw new Error(
+      `Failed to read content file. Reason: ${
+        readError instanceof Error ? readError.message : String(readError)
+      }`
+    );
   }
+
+  let jsonData: unknown;
+  try {
+    jsonData = JSON.parse(fileContent);
+    console.log(
+      `[getContent] Successfully parsed JSON from ${contentFilePath}`
+    );
+  } catch (parseError: unknown) {
+    console.error(
+      `[getContent] Error parsing JSON from ${contentFilePath}:`,
+      parseError
+    );
+    // Перебрасываем ошибку, не возвращаем {}
+    throw new Error(
+      `Failed to parse content file as JSON. Reason: ${
+        parseError instanceof Error ? parseError.message : String(parseError)
+      }`
+    );
+  }
+
+  // Простейшая проверка, что это объект (не массив, не null)
+  if (
+    typeof jsonData !== "object" ||
+    jsonData === null ||
+    Array.isArray(jsonData)
+  ) {
+    const errorMsg = `[getContent] Invalid content structure in ${contentFilePath}: Root level is not an object. Found type: ${
+      Array.isArray(jsonData) ? "array" : typeof jsonData
+    }`;
+    console.error(errorMsg);
+    throw new Error("Invalid content structure: Root level must be an object.");
+  }
+
+  // Никакой валидации Zod или нормализации по запросу.
+  // Просто делаем type assertion, полагаясь на то, что структура верна.
+  // Если структура неверна, ошибка произойдет позже при доступе к полям.
+  console.log(
+    "[getContent] Assuming content structure matches SpecificAppContent based on successful read/parse."
+  );
+  return jsonData as AppContent;
 }
 
-// --- Запись контента ---
-export async function writeContent(newContent: AppContent): Promise<void> {
+/**
+ * Записывает данные в файл content.json.
+ * Принимает объект, соответствующий интерфейсу SpecificAppContent.
+ * @param newContent - Объект контента для записи.
+ */
+export async function writeContent(
+  newContent: AppContent
+): Promise<void> {
   try {
-    // Нормализуем перед записью (на всякий случай, если пришли ненормализованные данные)
-    const normalizedContent = normalizeAppContent(newContent);
-    const dataString = JSON.stringify(normalizedContent, null, 2); // Форматирование с отступами
-    // TODO: Рассмотреть создание бэкапа перед записью основного файла
-    // await writeExContentFile(await readContentFile()); // Пример: сохранить старый перед записью нового
-    await writeContentFile(dataString);
-    console.log("Content file updated successfully.");
+    // Записываем как есть, форматируя JSON для читаемости
+    const dataString = JSON.stringify(newContent, null, 2); // Отступы в 2 пробела
+    await fs.writeFile(contentFilePath, dataString, "utf-8");
+    console.log(
+      `[writeContent] Content file ${contentFilePath} updated successfully.`
+    );
   } catch (error: unknown) {
-    console.error("Error writing content file:", error);
-    // Оборачиваем в новый объект Error для лучшего стектрейса
+    console.error(
+      `[writeContent] Error writing content file (${contentFilePath}):`,
+      error
+    );
     throw new Error(
       `Failed to update content file. Reason: ${
         error instanceof Error ? error.message : String(error)
@@ -180,3 +200,7 @@ export async function writeContent(newContent: AppContent): Promise<void> {
     );
   }
 }
+
+// Функции для бэкапа (ex-content.json) не используются и убраны для чистоты
+// async function readExContentFile...
+// async function writeExContentFile...

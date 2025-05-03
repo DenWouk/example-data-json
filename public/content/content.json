@@ -2,9 +2,10 @@
   "home": {
     "section1": {
       "title": "Hello World 1!",
-      "description1": "Это описание домашней страницы 1!!!",
-      "image1": "1746215240259-wolf-grey.jpeg",
-      "image2": "1746204817732-wolf-black.jpeg"
+      "description1": "Это описание домашней страницы 1!",
+      "image1": "1746221042867-wolf-black.jpeg",
+      "image2": "1746204817732-wolf-black.jpeg",
+      "image3": "1746204817732-wolf-black.jpeg"
     },
     "section2": {
       "title": "Hello World 2!!!",

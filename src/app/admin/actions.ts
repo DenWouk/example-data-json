@@ -4,219 +4,216 @@
 import fs from "fs/promises";
 import path from "path";
 import { revalidatePath } from "next/cache";
-import { AppContent, PageKey, SectionContent } from "../../types/types";
-import { isImageField } from "@/lib/content-utils"; // Утилита для проверки ключа
-import { getContent, getMediaFilePath, writeContent } from "@/lib/fs-utils";
+import { AppContent, PageKey, SectionContent } from "../../types/types"; // Убедимся, что путь правильный
+import { isImageField } from "@/lib/content-utils";
+// Используем утилиты из fs-utils, включая безопасное удаление и получение пути
+import {
+  getContent,
+  writeContent,
+  safeUnlink, // Импортируем безопасное удаление
+  getSafeMediaFilePath, // Импортируем получение безопасного пути для записи
+} from "@/lib/fs-utils";
 
-// --- Константы и хелперы ---
-const mediaFolderPath = path.join(process.cwd(), "media");
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB - используется при валидации файла
+// --- Константы ---
+// Папку media теперь получаем через getSafeMediaFilePath, но базовый путь нужен
+const mediaBaseFolderPath = path.join(process.cwd(), "media");
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_FILE_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/gif",
-]; // Используется при валидации файла
+  "image/svg+xml", // Добавим SVG как пример
+];
 
-// Функция безопасного удаления файла - используется
-async function safeUnlink(filePath: string | null | undefined) {
-  if (!filePath) return;
-  try {
-    // Используем basename для большей безопасности пути
-    const fullPath = getMediaFilePath(path.basename(filePath));
-    await fs.unlink(fullPath);
-    console.log(`Successfully deleted old file: ${fullPath}`);
-  } catch (error: any) {
-    // Игнорируем ошибку "файл не найден", но логируем другие ошибки
-    if (error.code !== "ENOENT") {
-      console.error(`Error deleting file ${filePath}:`, error);
-    }
-  }
-}
+// Локальная функция safeUnlink удалена, используется импортированная
 
 // --- Server Action для получения всего контента ---
 export async function getAdminContent(): Promise<AppContent> {
   console.log("Server Action: getAdminContent called");
-  // Просто вызываем функцию чтения контента
-  return await getContent(); // <-- ВОССТАНОВЛЕНО ТЕЛО ФУНКЦИИ
+  // Просто вызываем функцию чтения контента, которая уже включает нормализацию
+  return await getContent();
 }
 
 // --- ОБНОВЛЕННЫЙ Server Action для обновления КОНКРЕТНОЙ СЕКЦИИ ---
 export async function updateSectionContent(
-  pageKey: PageKey, // Ключ страницы
-  sectionKey: string, // Ключ секции
-  formData: FormData // FormData содержит файл (если есть) и JSON секции
-  // Возвращает обновленную секцию
+  pageKey: PageKey,
+  sectionKey: string,
+  formData: FormData
 ): Promise<{
+  // Уточнили тип возвращаемого значения
   success: boolean;
   message: string;
-  updatedSection?: SectionContent;
+  updatedSection?: SectionContent; // Обновленная секция возвращается при успехе
 }> {
-  // <-- ТИП ВОЗВРАЩАЕМОГО ЗНАЧЕНИЯ
   console.log(
     `Server Action: updateSectionContent called for ${pageKey}/${sectionKey}`
   );
 
   // --- 1. Извлечение данных из FormData ---
-  const imageFile = formData.get("imageFile") as File | null; // Загруженный файл
-  const imageFieldKey = formData.get("imageFieldKey") as string | null; // Ключ поля, к которому относится файл
-  const sectionDataJson = formData.get("sectionDataJson") as string | null; // Данные секции от клиента
+  const imageFile = formData.get("imageFile") as File | null;
+  const imageFieldKey = formData.get("imageFieldKey") as string | null;
+  const sectionDataJson = formData.get("sectionDataJson") as string | null;
 
-  // Проверки наличия данных
   if (!sectionDataJson) {
-    return { success: false, message: "Error: Section data JSON is missing." };
+    return {
+      success: false,
+      message: "Error: Missing section data. Cannot save.",
+    };
   }
   if (imageFile && !imageFieldKey) {
     return {
       success: false,
-      message: "Error: Image file provided without corresponding field key.",
+      message:
+        "Error: Image file was provided, but its target field key is missing.",
     };
   }
-  // Проверяем, что ключ для файла - действительно ключ изображения
   if (imageFieldKey && !isImageField(imageFieldKey)) {
     return {
       success: false,
-      message: `Error: Invalid image field key provided: ${imageFieldKey}`,
+      message: `Error: The field key '${imageFieldKey}' is not designated for images.`,
     };
   }
 
   let sectionDataFromClient: SectionContent;
   try {
-    // Парсим JSON от клиента
     sectionDataFromClient = JSON.parse(sectionDataJson);
     if (
       typeof sectionDataFromClient !== "object" ||
       sectionDataFromClient === null
     ) {
-      throw new Error("Parsed section data is not an object.");
+      throw new Error("Parsed section data is not a valid object.");
     }
-    // Нормализуем значения до строк (на всякий случай)
+    // Нормализация на всякий случай (хотя клиент должен присылать строки)
     Object.keys(sectionDataFromClient).forEach((key) => {
       sectionDataFromClient[key] = String(sectionDataFromClient[key] ?? "");
     });
-  } catch (e) {
-    console.error("Failed to parse or validate sectionDataJson:", e);
+  } catch (e: unknown) {
+    // Типизируем ошибку как unknown
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    console.error("Failed to parse or validate sectionDataJson:", errorMessage);
     return {
       success: false,
-      message: "Error: Invalid section data format received.",
+      message: `Error: Invalid section data format received. (${errorMessage})`,
     };
   }
 
-  // Копируем данные для дальнейшей модификации (особенно имени файла)
-  let finalSectionData = { ...sectionDataFromClient };
-  let oldFileToDelete: string | null = null; // Переменная для хранения имени старого файла
+  // Копируем данные для модификации
+  let finalSectionData: SectionContent = { ...sectionDataFromClient };
+  let oldFilenameToDelete: string | null = null; // Имя старого файла для удаления
+  let savedNewFilename: string | null = null; // Имя нового сохраненного файла (для отката)
 
   try {
-    // Получаем текущее состояние контента для сравнения
-    const currentContent = await getContent(); // Данные уже нормализованы
-    const currentSection = currentContent?.[pageKey]?.[sectionKey];
+    const currentContent = await getContent(); // Получаем текущий контент
+    const currentSection = currentContent?.[pageKey]?.[sectionKey]; // Текущие данные секции
 
     // --- 2. Обработка файла ИЗОБРАЖЕНИЯ (если был загружен) ---
     if (imageFile && imageFieldKey) {
-      // Валидация размера файла
+      // Валидация
       if (imageFile.size > MAX_FILE_SIZE) {
         return {
           success: false,
-          message: `File is too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB).`,
+          message: `Image file is too large. Maximum size is ${
+            MAX_FILE_SIZE / 1024 / 1024
+          }MB.`,
         };
       }
-      // Валидация типа файла
       if (!ALLOWED_FILE_TYPES.includes(imageFile.type)) {
         return {
           success: false,
-          message: `Invalid file type. Allowed: ${ALLOWED_FILE_TYPES.join(
-            ", "
-          )}`,
+          message: `Invalid image file type ('${
+            imageFile.type
+          }'). Allowed types: ${ALLOWED_FILE_TYPES.join(", ")}`,
         };
       }
 
-      // Генерация уникального имени и сохранение файла
-      const fileExtension = path.extname(imageFile.name);
-      const safeBaseName = path
-        .basename(imageFile.name, fileExtension)
-        .replace(/[^a-z0-9_.-]/gi, "_")
-        .toLowerCase();
+      // Генерация уникального и безопасного имени
+      const fileExtension = path.extname(imageFile.name) || ".unknown"; // Расширение
+      const safeBaseName =
+        path
+          .basename(imageFile.name, fileExtension)
+          .replace(/[^a-z0-9_.-]/gi, "_") // Оставляем только безопасные символы
+          .toLowerCase() || "image"; // Базовое имя файла
       const newFilename = `${Date.now()}-${safeBaseName}${fileExtension}`;
-      const savePath = path.join(mediaFolderPath, newFilename);
+
+      // Получаем БЕЗОПАСНЫЙ путь для записи через утилиту
+      const savePath = getSafeMediaFilePath(newFilename);
+      // Убедимся, что директория существует (на случай, если media удалили)
+      await fs.mkdir(mediaBaseFolderPath, { recursive: true });
 
       const bytes = await imageFile.arrayBuffer();
-      const buffer = Buffer.from(bytes);
-      await fs.writeFile(savePath, buffer);
+      await fs.writeFile(savePath, Buffer.from(bytes));
       console.log(`File saved successfully to: ${savePath}`);
 
-      // Обновляем имя файла в данных, которые будем сохранять
-      finalSectionData[imageFieldKey] = newFilename;
+      savedNewFilename = newFilename; // Запоминаем имя сохраненного файла для возможного отката
+      finalSectionData[imageFieldKey] = newFilename; // Обновляем имя файла в данных
 
-      // Определяем, нужно ли удалять старый файл
+      // Определяем старый файл для удаления
       const oldFilename = currentSection?.[imageFieldKey];
       if (oldFilename && oldFilename !== newFilename) {
-        // Был старый файл, и он не совпадает с новым
-        oldFileToDelete = oldFilename;
+        oldFilenameToDelete = oldFilename; // Был старый файл, и он отличается от нового
+        console.log(`Marking old file for deletion: ${oldFilename}`);
       }
     } else if (imageFieldKey && finalSectionData[imageFieldKey] === "") {
-      // Случай, когда файл не загружен, но поле картинки было очищено клиентом (стало '')
+      // Случай: поле изображения было очищено на клиенте (файл не загружался)
       const oldFilename = currentSection?.[imageFieldKey];
       if (oldFilename) {
-        // Удаляем старый файл только если он действительно был
+        oldFilenameToDelete = oldFilename; // Был старый файл, его нужно удалить
         console.log(
-          `Image field '${imageFieldKey}' was cleared by client. Marking old file for deletion: ${oldFilename}`
+          `Image field '${imageFieldKey}' cleared. Marking old file for deletion: ${oldFilename}`
         );
-        oldFileToDelete = oldFilename;
       }
       // Убедимся, что в финальных данных точно пустая строка
       finalSectionData[imageFieldKey] = "";
     }
-    // Если файл не загружен и поле не очищено, finalSectionData[imageFieldKey] останется таким, каким пришло от клиента.
+    // Если файл не загружался и поле не очищалось, значение imageFieldKey остается тем, что пришло от клиента.
 
     // --- 3. Обновление content.json ---
-    // Создаем новый объект всего контента
     const newAppContent: AppContent = {
-      ...currentContent, // Берем весь текущий контент
+      ...currentContent,
       [pageKey]: {
-        // Обновляем страницу по ключу
-        ...(currentContent?.[pageKey] || {}), // Берем все существующие секции этой страницы
-        [sectionKey]: finalSectionData, // Перезаписываем измененную секцию новыми данными
+        ...(currentContent?.[pageKey] || {}),
+        [sectionKey]: finalSectionData, // Обновляем конкретную секцию
       },
     };
-    // Записываем обновленный контент в файл (с нормализацией внутри writeContent)
-    await writeContent(newAppContent);
+    await writeContent(newAppContent); // Запись с нормализацией внутри
 
-    // --- 4. Удаление старого файла (после успешной записи JSON) ---
-    if (oldFileToDelete) {
-      await safeUnlink(oldFileToDelete);
+    // --- 4. Удаление старого файла (ПОСЛЕ успешной записи JSON) ---
+    if (oldFilenameToDelete) {
+      await safeUnlink(oldFilenameToDelete); // Используем безопасное удаление
     }
 
     // --- 5. Ревалидация кэша ---
-    const pagePath = pageKey === "home" ? "/" : `/${pageKey}`; // Определяем путь для ревалидации
+    // Определяем путь страницы (для home это '/', для остальных '/имя_страницы')
+    const pagePath = pageKey === "home" ? "/" : `/${String(pageKey)}`;
     revalidatePath(pagePath);
-    console.log(`Revalidated path: ${pagePath}`);
+    revalidatePath("/admin"); // Ревалидируем и админку на всякий случай
+    console.log(`Revalidated paths: ${pagePath} and /admin`);
 
     // --- 6. Успешный ответ ---
     return {
       success: true,
-      message: `Section '${sectionKey}' on page '${pageKey}' updated successfully!`,
-      updatedSection: finalSectionData, // Возвращаем финальные данные обновленной секции
+      message: `Section '${sectionKey}' on page '${pageKey}' updated successfully! Reload may be needed to see image changes immediately.`,
+      updatedSection: finalSectionData, // Возвращаем обновленные данные
     };
-  } catch (error: any) {
-    // --- Обработка ошибок ---
+  } catch (error: unknown) {
+    // Типизируем ошибку
+    const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Error updating section ${pageKey}/${sectionKey}:`, error);
-    // Попытка отката (удаления) загруженного файла, если запись JSON не удалась
-    if (
-      imageFile &&
-      imageFieldKey &&
-      finalSectionData[imageFieldKey] &&
-      !oldFileToDelete
-    ) {
-      // Проверяем, что имя файла было установлено в finalSectionData и не было помечено для удаления по другой причине
+
+    // --- Попытка отката ---
+    // Если новый файл был сохранен, но произошла ошибка ПОСЛЕ этого (например, при записи JSON или удалении старого)
+    if (savedNewFilename) {
       console.warn(
-        "Rolling back saved file due to error during content update..."
+        `Rolling back saved file '${savedNewFilename}' due to error during content update...`
       );
-      await safeUnlink(finalSectionData[imageFieldKey]);
+      await safeUnlink(savedNewFilename); // Удаляем только что сохраненный файл
     }
+
     // Возвращаем ошибку
     return {
       success: false,
-      message: `Failed to update section: ${error.message}`,
+      message: `Failed to update section '${sectionKey}'. Reason: ${errorMessage}`,
     };
   }
 }

@@ -1,54 +1,82 @@
 // src/app/api/media/[...filename]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
-import path from "path";
+// Не импортируем path, будем использовать basename внутри getSafeMediaFilePath
 import mime from "mime-types";
-import { getMediaFilePath } from "@/lib/fs-utils";
+// Используем ОБНОВЛЕННУЮ безопасную функцию
+import { getSafeMediaFilePath } from "@/lib/fs-utils";
+
+// Типизация контекста для App Router Route Handlers
+interface RouteContext {
+  params: {
+    filename?: string[]; // filename может отсутствовать если роут не совпал точно
+  };
+}
 
 export async function GET(
   request: NextRequest,
-  context: { params: /* Promise< */ { filename: string[] } /* > */ } // params теперь неявно Promise
+  context: RouteContext // Убрали Promise<>, params доступны синхронно
 ) {
-  // --- ИСПОЛЬЗУЕМ await ---
-  const params = await context.params; // <-- ЯВНО ДОЖИДАЕМСЯ params
-  // --- Конец исправления ---
+  // Параметры доступны сразу в context.params
+  const filenameSegments = context.params.filename;
 
-  // Теперь можно безопасно обращаться к params.filename
-  if (!params || !Array.isArray(params.filename)) {
+  if (
+    !filenameSegments ||
+    !Array.isArray(filenameSegments) ||
+    filenameSegments.length === 0
+  ) {
     console.error(
-      "[API Media GET] Error: Invalid params structure received after await:",
-      params
+      "[API Media GET] Error: Invalid or missing filename segments in route params:",
+      filenameSegments
     );
-    return new NextResponse("Invalid route parameters", { status: 500 });
+    return new NextResponse("Invalid route parameters", { status: 400 }); // 400 Bad Request
   }
 
-  const filename = params.filename.join("/");
+  // Собираем путь из сегментов. Важно: getSafeMediaFilePath обработает только последний сегмент (имя файла)!
+  // Если нужны вложенные папки внутри media, логику getSafeMediaFilePath нужно будет адаптировать.
+  // Текущая реализация getSafeMediaFilePath ожидает ТОЛЬКО имя файла.
+  const requestedFilename = filenameSegments.join("/"); // Это может быть "image.jpg" или "subdir/image.jpg"
 
-  if (!filename) {
-    return new NextResponse("Filename missing", { status: 400 });
-  }
-  console.log(`[API Media GET] Requested filename: ${filename}`);
+  console.log(`[API Media GET] Requested filename raw: ${requestedFilename}`);
 
   try {
-    const filePath = getMediaFilePath(filename);
+    // getSafeMediaFilePath ИСПОЛЬЗУЕТ ТОЛЬКО БАЗОВОЕ ИМЯ ФАЙЛА из requestedFilename
+    // Если вам нужно разрешить подпапки, getSafeMediaFilePath нужно модифицировать
+    // или использовать другой подход для валидации пути.
+    // Текущий вызов безопасен, т.к. path.basename() будет вызван внутри.
+    const filePath = getSafeMediaFilePath(requestedFilename);
+    console.log(`[API Media GET] Serving file from safe path: ${filePath}`);
+
+    // Проверка доступа (уже внутри getSafeMediaFilePath не делается, делаем здесь)
+    // fs.access нужен, чтобы убедиться, что файл действительно существует перед чтением
     await fs.access(filePath);
 
     const fileBuffer = await fs.readFile(filePath);
-    const contentType = mime.lookup(filename) || "application/octet-stream";
+    // mime.lookup использует расширение файла
+    const contentType = mime.lookup(filePath) || "application/octet-stream";
 
     const headers = new Headers();
     headers.set("Content-Type", contentType);
-    headers.set("Cache-Control", "public, max-age=60, immutable");
+    // Кеширование: public, max-age=31536000 (1 год), immutable - агрессивное кеширование для статики
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
 
     return new NextResponse(fileBuffer, { status: 200, headers });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // Логируем исходное запрошенное имя и ошибку
     console.error(
-      `[API Media GET] Error serving media file ${filename}:`,
+      `[API Media GET] Error serving media file '${requestedFilename}':`,
       error
     );
-    if (error.code === "ENOENT") {
+    // Проверяем тип ошибки для доступа к 'code'
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
       return new NextResponse("Media file not found", { status: 404 });
     }
+    // Для других ошибок возвращаем 500
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }

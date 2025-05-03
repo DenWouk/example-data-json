@@ -8,8 +8,8 @@
     "start": "next start",
     "deploy": "next build&& cp -r media .next/standalone/ && cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/ && rm -rf next-app && cp -r .next/standalone next-app && rm -rf next-app/node_modules",
     "standalone": "node .next/standalone/server.js",
-    "lint": "next lint",
-    "generate-types": "quicktype public/content/content.json -o src/lib/contentTypes.ts --just-types"
+    "types": "ts-node scripts/generate-types.ts",
+    "lint": "next lint"
   },
   "dependencies": {
     "mime-types": "^3.0.1",
@@ -25,6 +25,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.2.4",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

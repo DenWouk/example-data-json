@@ -7,10 +7,10 @@ import {
   FormEvent,
   useRef,
   ChangeEvent,
-  useCallback,
+  useCallback, // Оставляем только для handleInputChange, т.к. он в зависимостях
 } from "react";
-import Image from "next/image"; // Нужен для превью
-import { AppContent, PageKey, SectionContent } from "../../types/types";
+import Image from "next/image";
+import { AppContent, PageKey, SectionContent } from "../../types/types"; // Убедимся, что путь правильный
 import { getAdminContent, updateSectionContent } from "./actions";
 import {
   generateLabel,
@@ -18,111 +18,136 @@ import {
   inferInputElement,
   createEmptySectionContent,
 } from "@/lib/content-utils";
-// Импорт prepareImageData НЕ нужен на клиенте
-// import { prepareImageData } from '@/lib/imageUtils';
 
-// Тип для данных формы - всегда SectionContent или null
+// Тип для данных формы - SectionContent или null
 type CurrentFormDataType = SectionContent | null;
+
+// Можно вынести рендеринг полей в отдельный компонент для чистоты,
+// но пока оставим здесь для простоты примера.
+/*
+interface SectionFormFieldProps {
+  fieldKey: string;
+  value: string; // Всегда строка
+  label: string;
+  isSaving: boolean;
+  localPreviewUrl?: string | null;
+  onInputChange: (key: string, value: string) => void;
+  onFileChange: (fieldKey: string, e: ChangeEvent<HTMLInputElement>) => void;
+  onClearImage: (fieldKey: string) => void;
+  fileInputRef: (el: HTMLInputElement | null) => void;
+}
+
+const SectionFormField: React.FC<SectionFormFieldProps> = ({ ... }) => { ... }
+*/
 
 export default function AdminPage() {
   // === Состояния ===
-  const [appContent, setAppContent] = useState<AppContent | null>(null); // Весь контент
-  const [pageKeys, setPageKeys] = useState<PageKey[]>([]); // Ключи страниц для навигации
-  const [selectedPageKey, setSelectedPageKey] = useState<PageKey | null>(null); // Выбранная страница
-  const [sectionKeys, setSectionKeys] = useState<string[]>([]); // Ключи секций для навигации
+  const [appContent, setAppContent] = useState<AppContent | null>(null);
+  const [pageKeys, setPageKeys] = useState<PageKey[]>([]);
+  const [selectedPageKey, setSelectedPageKey] = useState<PageKey | null>(null);
+  const [sectionKeys, setSectionKeys] = useState<string[]>([]);
   const [selectedSectionKey, setSelectedSectionKey] = useState<string | null>(
     null
-  ); // Выбранная секция
+  );
   const [currentFormData, setCurrentFormData] =
-    useState<CurrentFormDataType>(null); // Данные ТЕКУЩЕЙ секции для формы
+    useState<CurrentFormDataType>(null);
   const [localImagePreviews, setLocalImagePreviews] = useState<{
     [key: string]: string | null;
-  }>({}); // Для превью ВЫБРАННЫХ файлов
+  }>({});
   const [uploadingImageField, setUploadingImageField] = useState<string | null>(
     null
-  ); // Какой image-* файл выбран для загрузки
+  );
 
-  // Состояния UI
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
-  // Рефы
-  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({}); // Рефы для ВСЕХ input[type=file]
+  const fileInputRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const formRef = useRef<HTMLFormElement>(null);
 
   // === Эффекты ===
 
-  // 1. Загрузка начальных данных всего контента
+  // 1. Загрузка начальных данных
   useEffect(() => {
     async function loadInitialContent() {
       setIsLoading(true);
-      setError(null); // Сброс состояний
+      setError(null);
       setAppContent(null);
       setPageKeys([]);
       setSelectedPageKey(null);
+      // Сбрасываем все зависимые состояния
       setSectionKeys([]);
       setSelectedSectionKey(null);
       setCurrentFormData(null);
       setLocalImagePreviews({});
-      setUploadingImageField(null); // Сброс превью
+      setUploadingImageField(null);
+      setStatusMessage("");
 
       try {
-        const fetchedContent = await getAdminContent(); // Получаем контент (уже нормализованный)
+        const fetchedContent = await getAdminContent();
         setAppContent(fetchedContent);
         const keys = Object.keys(fetchedContent || {}) as PageKey[];
         setPageKeys(keys);
+        // Выбираем первую страницу, если она есть
         if (keys.length > 0) {
-          setSelectedPageKey(keys[0]); // Выбираем первую страницу
+          setSelectedPageKey(keys[0]);
         } else {
           console.warn("No pages found in content.");
-          setIsLoading(false); // Завершаем загрузку, если страниц нет
+          setIsLoading(false); // Загрузка завершена, если страниц нет
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        // Типизируем ошибку
+        const message = err instanceof Error ? err.message : String(err);
         console.error("Failed to load content for admin:", err);
-        setError(`Failed to load content: ${err.message || "Unknown error"}`);
-        setIsLoading(false); // Завершаем загрузку при ошибке
+        setError(`Failed to load content: ${message}`);
+        setIsLoading(false); // Загрузка завершена с ошибкой
       }
-      // setIsLoading(false) будет вызван после установки selectedPageKey -> sectionKey -> currentFormData
+      // setIsLoading(false) будет вызван в useEffect[selectedSectionKey] после установки данных формы
     }
     loadInitialContent();
   }, []); // Только при монтировании
 
-  // 2. Обновление списка секций при смене страницы
+  // 2. Обновление секций при смене страницы
   useEffect(() => {
     let keys: string[] = [];
     if (selectedPageKey && appContent) {
       keys = Object.keys(appContent[selectedPageKey] || {});
     }
     setSectionKeys(keys);
-    setSelectedSectionKey(keys.length > 0 ? keys[0] : null); // Выбираем первую секцию или null
-    // Очищаем данные формы и превью при смене страницы, они загрузятся следующим эффектом
+    setSelectedSectionKey(keys.length > 0 ? keys[0] : null);
+    // Очищаем форму и превью, они загрузятся в следующем эффекте
     setCurrentFormData(null);
     setLocalImagePreviews({});
     setUploadingImageField(null);
     setStatusMessage("");
-    setError(null);
+    setError(null); // Сброс ошибок при смене страницы
   }, [selectedPageKey, appContent]);
 
-  // 3. Обновление данных формы при смене секции (или страницы)
+  // 3. Обновление данных формы при смене секции
   useEffect(() => {
     let sectionData: SectionContent | null = null;
     if (appContent && selectedPageKey && selectedSectionKey) {
+      // Получаем данные секции ИЛИ null, если ключи есть, а данных нет
       sectionData = appContent[selectedPageKey]?.[selectedSectionKey] ?? null;
     }
-    // Устанавливаем данные ТЕКУЩЕЙ секции или пустой объект, если секции нет, но ключ выбран
-    setCurrentFormData(
-      sectionData ?? (selectedSectionKey ? createEmptySectionContent() : null)
-    );
-    setLocalImagePreviews({}); // Всегда сбрасываем локальные превью при смене секции
+
+    // Если ключ секции выбран, но данных нет (новая секция?), создаем пустую структуру
+    const formDataToSet =
+      sectionData ?? (selectedSectionKey ? createEmptySectionContent() : null);
+    setCurrentFormData(formDataToSet);
+
+    // Сбрасываем локальные превью и статус загрузки файла при смене секции
+    setLocalImagePreviews({});
     setUploadingImageField(null);
 
-    // Завершаем общую загрузку здесь, после попытки установки данных формы
-    if (isLoading && appContent !== null) setIsLoading(false); // Условие изменено на appContent !== null
+    // Завершаем индикатор загрузки, если он был активен и данные (или null) установлены
+    if (isLoading) setIsLoading(false);
+
+    // Сброс сообщений
     setStatusMessage("");
-    setError(null); // Сброс сообщений
-  }, [selectedSectionKey, selectedPageKey, appContent, isLoading]);
+    setError(null);
+  }, [selectedSectionKey, selectedPageKey, appContent]); // Убрали isLoading из зависимостей
 
   // === Обработчики ===
   const handlePageNavClick = (pageKey: PageKey) => {
@@ -136,88 +161,112 @@ export default function AdminPage() {
     }
   };
 
-  // Универсальный обработчик для обновления ЛЮБОГО поля в currentFormData
-  const handleInputChange = useCallback((key: string, value: string) => {
-    // value всегда string
-    setCurrentFormData((prevData) => {
-      // Создаем пустой объект, если предыдущего состояния нет, но ключи есть
-      const baseData =
-        prevData ?? createEmptySectionContent(Object.keys(prevData ?? {}));
-      return { ...baseData, [key]: value };
-    });
-    // Сбрасываем локальное превью для image полей, если значение очищено
-    if (isImageField(key) && value === "") {
-      setLocalImagePreviews((prev) => ({ ...prev, [key]: null }));
-    }
-  }, []);
+  // useCallback нужен здесь, так как handleInputChange может быть использована
+  // в других useCallback или useEffect как зависимость (хотя сейчас не используется).
+  // Оставляем для потенциальной будущей оптимизации.
+  const handleInputChange = useCallback(
+    (key: string, value: string) => {
+      setCurrentFormData((prevData) => {
+        const baseData =
+          prevData ?? createEmptySectionContent(Object.keys(prevData ?? {}));
+        return { ...baseData, [key]: value }; // value всегда строка
+      });
+      // Сбрасываем локальное превью для поля image, если его значение очистили вручную
+      if (isImageField(key) && value === "") {
+        setLocalImagePreviews((prev) => ({ ...prev, [key]: null }));
+        // Также сбрасываем input[type=file], если он был связан с этим полем
+        if (fileInputRefs.current[key]) {
+          fileInputRefs.current[key]!.value = "";
+        }
+        // Если это поле было выбрано для загрузки, сбрасываем флаг
+        if (uploadingImageField === key) {
+          setUploadingImageField(null);
+        }
+      }
+    },
+    [uploadingImageField]
+  ); // Добавили uploadingImageField в зависимости
 
-  // Конкретный обработчик для textarea
+  // Для этих обработчиков useCallback не обязателен, т.к. они не передаются в мемоизированные компоненты
   const handleTextareaChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
     handleInputChange(e.target.name, e.target.value);
   };
 
-  // Обработчик выбора файла для КОНКРЕТНОГО поля image-*
   const handleFileChange = (
     fieldKey: string,
     e: ChangeEvent<HTMLInputElement>
   ) => {
-    if (e.target.files && e.target.files[0]) {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Простая валидация типа на клиенте (серверная важнее)
+      if (!file.type.startsWith("image/")) {
+        setError(`File selected for '${fieldKey}' is not an image.`);
+        e.target.value = ""; // Сброс инпута
+        return;
+      }
+      // Простая валидация размера на клиенте
+      if (file.size > 5 * 1024 * 1024) {
+        // ~5MB
+        setError(`Image for '${fieldKey}' is too large (max 5MB).`);
+        e.target.value = ""; // Сброс инпута
+        return;
+      }
+
       setUploadingImageField(fieldKey); // Запоминаем, ДЛЯ КАКОГО ПОЛЯ выбран файл
-      setError(null);
-      setStatusMessage("");
+      setError(null); // Сброс ошибки
+      setStatusMessage(""); // Сброс статуса
       const reader = new FileReader();
       reader.onload = (loadEvent) => {
-        if (loadEvent.target?.result) {
-          // Сохраняем локальное превью выбранного файла
-          setLocalImagePreviews((prev) => ({
-            ...prev,
-            [fieldKey]: loadEvent.target?.result as string,
-          }));
-        }
+        // Сохраняем локальное превью (Data URL)
+        setLocalImagePreviews((prev) => ({
+          ...prev,
+          [fieldKey]: loadEvent.target?.result as string,
+        }));
       };
-      reader.readAsDataURL(e.target.files[0]);
+      reader.onerror = () => {
+        setError(`Failed to read file for preview: ${file.name}`);
+        setUploadingImageField(null);
+        setLocalImagePreviews((prev) => ({ ...prev, [fieldKey]: null }));
+      };
+      reader.readAsDataURL(file);
     } else {
-      // Если пользователь отменил выбор файла
+      // Пользователь отменил выбор файла
       setUploadingImageField(null);
-      // Убираем локальное превью
       setLocalImagePreviews((prev) => ({ ...prev, [fieldKey]: null }));
+      // Не нужно вызывать handleInputChange, т.к. данные не изменились
     }
   };
 
-  // Обработчик кнопки "Clear Image" для КОНКРЕТНОГО поля image-*
   const handleClearImage = (fieldKey: string) => {
     handleInputChange(fieldKey, ""); // Устанавливаем пустую строку в данных формы
-    if (fileInputRefs.current[fieldKey]) {
-      fileInputRefs.current[fieldKey]!.value = ""; // Сбрасываем сам инпут файла
-    }
-    setUploadingImageField(null); // Сбрасываем флаг загрузки для этого поля
-    setLocalImagePreviews((prev) => ({ ...prev, [fieldKey]: null })); // Убираем локальное превью
+    // Остальное сбрасывается внутри handleInputChange (превью, file input, uploading flag)
   };
 
   // === Отправка формы ===
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Добавлена проверка selectedPageKey и selectedSectionKey
     if (
       !formRef.current ||
       !currentFormData ||
       !selectedPageKey ||
       !selectedSectionKey
     ) {
-      setError("Cannot save: missing page/section selection or form data.");
+      setError(
+        "Cannot save: critical information missing (page, section, or form data). Please select a section."
+      );
       return;
     }
 
     setIsSaving(true);
-    setStatusMessage("");
+    setStatusMessage("Saving...");
     setError(null);
     const formDataToSend = new FormData();
 
-    // 1. Добавляем ключи страницы и секции (приводим к строке)
-    formDataToSend.append("pageKey", String(selectedPageKey));
-    formDataToSend.append("sectionKey", String(selectedSectionKey));
+    // 1. Ключи страницы и секции (уже проверены на null выше)
+    formDataToSend.append("pageKey", String(selectedPageKey)); // PageKey уже строка или будет приведена
+    formDataToSend.append("sectionKey", selectedSectionKey);
 
-    // 2. Ищем, был ли выбран файл для загрузки
+    // 2. Файл изображения, если выбран для загрузки
     let imageFile: File | null = null;
     if (
       uploadingImageField &&
@@ -225,12 +274,16 @@ export default function AdminPage() {
     ) {
       imageFile = fileInputRefs.current[uploadingImageField]!.files![0];
       formDataToSend.append("imageFile", imageFile);
-      formDataToSend.append("imageFieldKey", uploadingImageField); // Ключ поля, к которому относится файл
-      console.log(`Appending image file for field: ${uploadingImageField}`);
+      formDataToSend.append("imageFieldKey", uploadingImageField);
+      console.log(
+        `Appending image file for field: ${uploadingImageField}, Name: ${imageFile.name}`
+      );
+    } else {
+      console.log("No new image file selected for upload.");
     }
 
     // 3. Сериализуем ТЕКУЩЕЕ состояние формы (currentFormData)
-    // Убедимся, что все значения - строки перед отправкой
+    // Убедимся, что все значения - строки (хотя handleInputChange должен это гарантировать)
     const dataToSend: SectionContent = {};
     Object.keys(currentFormData).forEach((key) => {
       dataToSend[key] = currentFormData[key] ?? ""; // Гарантируем строку
@@ -238,176 +291,257 @@ export default function AdminPage() {
 
     try {
       formDataToSend.append("sectionDataJson", JSON.stringify(dataToSend));
-    } catch (err) {
-      setError("Failed to serialize form data.");
+    } catch (err: unknown) {
+      // Типизация
+      setError(
+        `Failed to prepare data for saving: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
       setIsSaving(false);
       return;
     }
 
+    // --- Вызов Server Action ---
     try {
-      // Вызываем action с АКТУАЛЬНЫМИ selectedPageKey и selectedSectionKey
       const result = await updateSectionContent(
-        selectedPageKey,
+        selectedPageKey, // Передаем актуальные ключи
         selectedSectionKey,
         formDataToSend
       );
 
       if (result.success) {
-        setStatusMessage(result.message);
-        // Обновляем ВСЕ состояния из ответа сервера
-        if (result.updatedSection && appContent) {
+        setStatusMessage(result.message || "Section updated successfully!"); // Сообщение об успехе
+        if (result.updatedSection) {
+          // Обновляем состояние контента и формы данными с сервера
           const updatedSectionData = result.updatedSection;
-          // Обновляем общее состояние контента
-          setAppContent((prev) => ({
-            ...prev!,
-            [selectedPageKey!]: {
-              ...(prev![selectedPageKey!] || {}),
-              [selectedSectionKey!]: updatedSectionData,
-            },
-          }));
-          // Обновляем текущую форму данными с сервера
+          setAppContent((prev) => {
+            if (!prev) return null; // Защита
+            return {
+              ...prev,
+              [selectedPageKey!]: {
+                // Уверены, что не null
+                ...(prev[selectedPageKey!] || {}),
+                [selectedSectionKey!]: updatedSectionData, // Уверены, что не null
+              },
+            };
+          });
+          // Обновляем текущую форму ТОЧНО теми данными, что теперь на сервере
           setCurrentFormData(updatedSectionData);
-          // Сброс состояния загрузки файла
+          // Сброс состояния загрузки файла ПОСЛЕ успешного сохранения
           if (
             uploadingImageField &&
             fileInputRefs.current[uploadingImageField]
           ) {
-            fileInputRefs.current[uploadingImageField]!.value = "";
+            fileInputRefs.current[uploadingImageField]!.value = ""; // Очищаем инпут
           }
-          setUploadingImageField(null);
-          // Локальные превью очистятся при следующем ререндере из-за обновления currentFormData
-          setLocalImagePreviews({}); // Очищаем локальные превью явно
+          setUploadingImageField(null); // Сбрасываем флаг
+          setLocalImagePreviews({}); // Очищаем все локальные превью
+        } else {
+          // Если сервер не вернул updatedSection, возможно, стоит перезагрузить данные
+          setStatusMessage(
+            result.message + " (Could not refresh form data automatically)"
+          );
         }
       } else {
-        setError(result.message);
+        // Ошибка от Server Action
+        setError(
+          result.message || "Failed to update section. Unknown server error."
+        );
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      // Ошибка самого вызова fetch/action
+      const message = err instanceof Error ? err.message : String(err);
       console.error("Failed to submit form:", err);
-      setError(`An unexpected error occurred: ${err.message}`);
+      setError(`An unexpected error occurred during submission: ${message}`);
     } finally {
-      setIsSaving(false);
+      setIsSaving(false); // Завершаем состояние сохранения в любом случае
+      // Не сбрасываем statusMessage здесь, чтобы пользователь видел результат
     }
   };
 
   // === Динамический рендеринг полей ===
   const renderFormFields = () => {
-    if (!currentFormData || !selectedPageKey || !selectedSectionKey) {
-      return <p>Select a section to edit or wait for data to load...</p>;
-    }
+    // Ждем загрузки данных или выбора секции
+    if (isLoading) return <p>Loading section data...</p>;
+    if (!selectedPageKey || !selectedSectionKey)
+      return <p>Select a page and section to edit.</p>;
+    if (!currentFormData)
+      return <p>No data loaded for this section, or section is empty.</p>;
 
     const currentKeys = Object.keys(currentFormData);
-    if (currentKeys.length === 0 && !isLoading) {
-      // Добавили проверку isLoading
+    if (currentKeys.length === 0) {
       return (
-        <p>No fields found in this section. Add fields in content.json.</p>
+        <p>This section currently has no fields defined in content.json.</p>
       );
     }
 
     return currentKeys.map((key) => {
-      const value = currentFormData[key]; // Это всегда строка
+      const value = currentFormData[key]; // Гарантированно строка или пустая строка
       const label = generateLabel(key);
-      const inputType = inferInputElement(key); // 'file' или 'textarea'
-      const elementKey = `${selectedPageKey}-${selectedSectionKey}-${key}`;
-      const localPreviewUrl = localImagePreviews[key]; // Получаем локальное превью
-      // Формируем URL для существующего изображения, только если нет локального превью
+      const inputType = inferInputElement(key);
+      const elementKey = `${selectedPageKey}-${selectedSectionKey}-${key}`; // Уникальный ключ для React
+      const localPreviewUrl = localImagePreviews[key];
+      // Формируем URL существующего изображения, ТОЛЬКО если нет локального превью и есть значение
       const existingImageUrl =
         isImageField(key) && value && !localPreviewUrl
           ? `/api/media/${value}`
           : null;
-      const displayUrl = localPreviewUrl || existingImageUrl; // Приоритет у локального превью
+      // Приоритет у локального превью (то, что выбрал пользователь), затем у существующего
+      const displayUrl = localPreviewUrl || existingImageUrl;
 
       if (inputType === "file") {
-        // Рендеринг поля для загрузки изображения
+        // --- Поле для изображения ---
         return (
           <div
             key={elementKey}
             style={{
-              marginBottom: "15px",
-              padding: "10px",
-              border: "1px solid lightblue",
+              marginBottom: "20px",
+              padding: "15px",
+              border: "1px solid #e0e0e0",
+              borderRadius: "4px",
             }}
           >
-            <label htmlFor={key} style={{ fontWeight: "bold" }}>
+            <label
+              htmlFor={key}
+              style={{
+                fontWeight: "bold",
+                display: "block",
+                marginBottom: "8px",
+              }}
+            >
               {label}:
             </label>
-            <br />
-            {/* Показ превью */}
-            {displayUrl ? (
-              /* Используем стандартный img для локального превью (Data URL) и Next Image для серверного */
-              localPreviewUrl ? (
-                <img
-                  src={displayUrl}
-                  alt={`${label} preview`}
-                  width="100"
-                  height="100"
-                  style={{
-                    display: "block",
-                    marginBottom: "5px",
-                    objectFit: "contain",
-                  }}
-                />
+            {/* Блок превью */}
+            <div style={{ marginBottom: "10px", minHeight: "100px" }}>
+              {displayUrl ? (
+                localPreviewUrl ? (
+                  <img // Стандартный img для Data URL
+                    src={displayUrl}
+                    alt={`${label} preview (local)`}
+                    style={{
+                      maxWidth: "150px",
+                      maxHeight: "150px",
+                      height: "auto",
+                      display: "block",
+                      objectFit: "contain",
+                      border: "1px solid #ccc",
+                    }}
+                  />
+                ) : (
+                  <Image // Next/Image для серверных URL
+                    src={displayUrl}
+                    alt={`${label} preview (current)`}
+                    width={150}
+                    height={150}
+                    style={{
+                      display: "block",
+                      objectFit: "contain",
+                      border: "1px solid #ccc",
+                    }}
+                    // Добавляем onError для обработки ошибок загрузки существующих изображений
+                    onError={(e) => {
+                      console.warn(`Failed to load image: ${displayUrl}`);
+                      // Можно показать плейсхолдер или сообщение об ошибке
+                      (e.target as HTMLImageElement).style.display = "none"; // Скрыть сломанное изображение
+                      // TODO: Показать запасной контент
+                    }}
+                  />
+                )
+              ) : value ? (
+                // Если есть значение, но нет URL (например, ошибка загрузки)
+                <p>
+                  <small>Current file: {value} (preview not available)</small>
+                </p>
               ) : (
+                // Нет ни значения, ни превью
+                <p>
+                  <small>No image set.</small>
+                </p>
+              )}
+              {/* Показываем скрытое сообщение, если изображение не найдено на сервере */}
+              {!localPreviewUrl && existingImageUrl && (
                 <Image
-                  src={displayUrl}
-                  alt={`${label} preview`}
-                  width={100}
-                  height={100}
-                  style={{
-                    display: "block",
-                    marginBottom: "5px",
-                    objectFit: "contain",
+                  key={existingImageUrl + "-check"}
+                  src={existingImageUrl}
+                  alt=""
+                  width={1}
+                  height={1}
+                  style={{ display: "none" }}
+                  onError={() => {
+                    // Эта ошибка сработает, если prepareImageData вернул URL, но /api/media отдало 404
+                    // Можно обновить состояние, чтобы показать сообщение пользователю
+                    console.warn(
+                      `Admin check failed for image: ${existingImageUrl}`
+                    );
+                    // setMissingImages(prev => ({...prev, [key]: true})) // Пример
                   }}
                 />
-              )
-            ) : value ? (
-              <p>
-                <small>Current file: {value} (preview unavailable)</small>
-              </p>
-            ) : (
-              <p>
-                <small>No image set.</small>
-              </p>
-            )}
+              )}
+            </div>
             {/* Инпут файла */}
             <input
               type="file"
               id={key}
-              name={key}
-              accept="image/*"
+              name={key} // Важно для связи с label и потенциально для FormData без JS
+              accept="image/*" // Браузерный фильтр
               ref={(el) => {
                 fileInputRefs.current[key] = el;
               }}
               onChange={(e) => handleFileChange(key, e)}
-              style={{ display: "block", marginBottom: "5px" }}
+              disabled={isSaving}
+              style={{ display: "block", marginBottom: "10px" }}
             />
             {/* Кнопка очистки */}
-            {value && ( // Показываем, только если есть значение (файл задан)
+            {(value || localPreviewUrl) && ( // Показываем, если есть значение ИЛИ локальное превью
               <button
                 type="button"
                 onClick={() => handleClearImage(key)}
                 disabled={isSaving}
-                style={{ marginLeft: "5px" }}
+                style={{
+                  marginRight: "5px",
+                  background: "#f44336",
+                  color: "white",
+                  border: "none",
+                  padding: "5px 10px",
+                  cursor: "pointer",
+                }}
               >
                 Clear Image
               </button>
             )}
-            <br />
-            <small>Max 5MB.</small>
+            <small>Max 5MB. Allowed: jpg, png, webp, gif, svg.</small>
           </div>
         );
       } else {
-        // Рендеринг textarea для всех остальных полей
+        // --- Поле textarea ---
         return (
-          <div key={elementKey} style={{ marginBottom: "10px" }}>
-            <label htmlFor={key}>{label}:</label>
-            <br />
+          <div key={elementKey} style={{ marginBottom: "15px" }}>
+            <label
+              htmlFor={key}
+              style={{
+                display: "block",
+                marginBottom: "5px",
+                fontWeight: "bold",
+              }}
+            >
+              {label}:
+            </label>
             <textarea
               id={key}
-              name={key}
-              value={value} // Значение уже строка
+              name={key} // Важно для связи с label и FormData
+              value={value} // Значение всегда строка из currentFormData
               onChange={handleTextareaChange}
-              rows={key.toLowerCase().includes("description") ? 5 : 3} // Пример: больше строк для описаний
-              style={{ width: "100%", maxWidth: "600px", minHeight: "60px" }}
+              rows={key.toLowerCase().includes("description") ? 6 : 3} // Больше строк для описаний
+              disabled={isSaving}
+              style={{
+                width: "100%",
+                maxWidth: "800px",
+                minHeight: "80px",
+                padding: "8px",
+                border: "1px solid #ccc",
+                borderRadius: "4px",
+              }}
             />
           </div>
         );
@@ -416,22 +550,33 @@ export default function AdminPage() {
   };
 
   // === Рендеринг Компонента ===
-  if (isLoading) return <div>Loading content editor...</div>;
-  // Показываем ошибку загрузки только если она есть и загрузка завершена
-  if (error && !isLoading && !isSaving)
-    return <div>Error loading content: {error}</div>;
-  // Если контент не загрузился (например, ошибка парсинга JSON на сервере)
+  if (isLoading && !appContent)
+    return <div style={{ padding: "20px" }}>Loading content editor...</div>;
+  // Показываем ошибку ЗАГРУЗКИ контента, если она произошла
+  if (error && !isLoading && !appContent && !isSaving)
+    return (
+      <div style={{ padding: "20px", color: "red" }}>
+        Error loading content: {error}
+      </div>
+    );
+  // Если контент не загрузился по неизвестной причине
   if (!appContent && !isLoading)
-    return <div>Could not load application content data.</div>;
+    return (
+      <div style={{ padding: "20px" }}>
+        Could not load application content data. Check server logs or
+        content.json.
+      </div>
+    );
 
   return (
-    <div>
-      <h1>Admin Panel</h1>
+    <div style={{ padding: "20px", fontFamily: "sans-serif" }}>
+      <h1>Admin Panel - Content Editor</h1>
+
       {/* Навигация по страницам */}
       <nav
         style={{
-          marginBottom: "10px",
-          paddingBottom: "5px",
+          marginBottom: "15px",
+          paddingBottom: "10px",
           borderBottom: "2px solid black",
         }}
       >
@@ -443,16 +588,18 @@ export default function AdminPage() {
               onClick={() => handlePageNavClick(key)}
               disabled={key === selectedPageKey || isSaving}
               style={{
-                marginLeft: "5px",
+                marginLeft: "8px",
+                padding: "5px 10px",
+                cursor: "pointer",
                 fontWeight: key === selectedPageKey ? "bold" : "normal",
-                cursor:
-                  key === selectedPageKey || isSaving ? "default" : "pointer",
+                border:
+                  key === selectedPageKey ? "2px solid blue" : "1px solid #ccc",
+                opacity: isSaving ? 0.6 : 1,
               }}
             >
-              {" "}
-              {generateLabel(String(key))}{" "}
+              {generateLabel(String(key))}
             </button>
-          )) // Приводим к строке для generateLabel
+          ))
         ) : (
           <span>No pages found. Add pages in content.json.</span>
         )}
@@ -462,8 +609,8 @@ export default function AdminPage() {
       {selectedPageKey && (
         <nav
           style={{
-            marginBottom: "20px",
-            paddingBottom: "10px",
+            marginBottom: "25px",
+            paddingBottom: "15px",
             borderBottom: "1px solid #ccc",
           }}
         >
@@ -477,16 +624,18 @@ export default function AdminPage() {
                 onClick={() => handleSectionNavClick(key)}
                 disabled={key === selectedSectionKey || isSaving}
                 style={{
-                  marginLeft: "5px",
+                  marginLeft: "8px",
+                  padding: "5px 10px",
+                  cursor: "pointer",
                   fontWeight: key === selectedSectionKey ? "bold" : "normal",
-                  cursor:
-                    key === selectedSectionKey || isSaving
-                      ? "default"
-                      : "pointer",
+                  border:
+                    key === selectedSectionKey
+                      ? "2px solid green"
+                      : "1px solid #ccc",
+                  opacity: isSaving ? 0.6 : 1,
                 }}
               >
-                {" "}
-                {generateLabel(key)}{" "}
+                {generateLabel(key)}
               </button>
             ))
           ) : (
@@ -498,11 +647,24 @@ export default function AdminPage() {
       )}
 
       {/* Форма редактирования */}
-      {selectedPageKey && selectedSectionKey ? ( // Показываем форму только если выбрана страница И секция
+      {selectedPageKey && selectedSectionKey ? (
         <div>
-          <h2>
-            Edit '{generateLabel(selectedSectionKey)}' in '
-            {generateLabel(String(selectedPageKey))}'
+          <h2
+            style={{
+              borderBottom: "1px dashed #ccc",
+              paddingBottom: "5px",
+              marginBottom: "15px",
+            }}
+          >
+            Edit Section:{" "}
+            <span style={{ color: "green" }}>
+              {generateLabel(selectedSectionKey)}
+            </span>{" "}
+            (Page:{" "}
+            <span style={{ color: "blue" }}>
+              {generateLabel(String(selectedPageKey))}
+            </span>
+            )
           </h2>
           <form
             ref={formRef}
@@ -511,34 +673,56 @@ export default function AdminPage() {
           >
             {/* Динамический рендеринг полей */}
             {renderFormFields()}
-            <br />
-            <button
-              type="submit"
-              disabled={isSaving || isLoading || !currentFormData}
-            >
-              {isSaving ? "Saving..." : `Update Section & Revalidate Cache`}
-            </button>
+            <hr style={{ margin: "25px 0" }} />
+            {/* Кнопка сохранения и Сообщения */}
+            <div>
+              <button
+                type="submit"
+                disabled={isSaving || isLoading || !currentFormData} // Нельзя сохранять, пока грузится или не выбрана секция
+                style={{
+                  padding: "10px 20px",
+                  fontSize: "16px",
+                  background: "#4CAF50",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  opacity: isSaving || isLoading || !currentFormData ? 0.5 : 1,
+                }}
+              >
+                {isSaving ? "Saving..." : `Save Changes & Revalidate`}
+              </button>
+              {/* Сообщения статуса и ошибок */}
+              {statusMessage && !error && (
+                <p style={{ color: "green", marginTop: "10px" }}>
+                  {statusMessage}
+                </p>
+              )}
+              {error && (
+                <p
+                  style={{
+                    color: "red",
+                    marginTop: "10px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  Error: {error}
+                </p>
+              )}
+            </div>
           </form>
-          {/* Сообщения */}
-          {statusMessage && <p style={{ color: "green" }}>{statusMessage}</p>}
-          {/* Показываем ошибку сохранения */}
-          {error && isSaving && (
-            <p style={{ color: "red" }}>Error during save: {error}</p>
-          )}
-          {/* Показываем ошибку загрузки (если не isSaving) */}
-          {error && !isSaving && <p style={{ color: "red" }}>Error: {error}</p>}
         </div>
       ) : (
-        // Уточняем сообщение ожидания
-        <p>
+        // Сообщение, если не выбрана секция или страница
+        <p style={{ marginTop: "20px", fontStyle: "italic" }}>
           {isLoading
             ? "Loading..."
             : selectedPageKey
-            ? "Select a section to edit."
-            : "Select a page to begin."}
+            ? "Select a section from the list above to start editing."
+            : "Select a page from the list above to begin."}
         </p>
       )}
-      <hr style={{ marginTop: "30px" }} />
+      <hr style={{ marginTop: "40px", borderColor: "#aaa" }} />
     </div>
   );
 }

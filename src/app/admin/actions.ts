@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 // Используем ТОЛЬКО SpecificAppContent и производные типы
 import {
     AppContent,
-    SpecificPageKey,
+    PageKey,
     SectionKeyForPage,
     SectionDataType // Тип для данных формы/обновленной секции
 } from "@/types/types";
@@ -36,7 +36,7 @@ export async function getAdminContent(): Promise<AppContent> {
 }
 
 // --- Server Action для обновления секции ---
-export async function updateSectionContent<P extends SpecificPageKey>( // Обобщаем по ключу страницы
+export async function updateSectionContent<P extends PageKey>( // Обобщаем по ключу страницы
   pageKey: P, // Принимаем конкретный ключ страницы
   sectionKey: SectionKeyForPage<P>, // Ключ секции зависит от страницы
   formData: FormData

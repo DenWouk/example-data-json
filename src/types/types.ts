@@ -14,16 +14,16 @@
 // --- END OF GENERATED SpecificAppContent INTERFACE ---
 
 // --- Тип для ключей страниц, основанный на SpecificAppContent ---
-export type SpecificPageKey = keyof AppContent;
+export type PageKey = keyof AppContent;
 
 // --- Тип для ключей секций внутри КОНКРЕТНОЙ страницы ---
 // Пример: SectionKeyForPage<'home'> будет 'section1' | 'section2'
-export type SectionKeyForPage<P extends SpecificPageKey> = keyof AppContent[P];
+export type SectionKeyForPage<P extends PageKey> = keyof AppContent[P];
 
 // --- Тип для ключей полей внутри КОНКРЕТНОЙ секции КОНКРЕТНОЙ страницы ---
 // Пример: FieldKeyForSection<'home', 'section1'> будет 'title' | 'description1' | 'image1' | 'image2'
 export type FieldKeyForSection<
-  P extends SpecificPageKey,
+  P extends PageKey,
   S extends SectionKeyForPage<P>
 > = keyof AppContent[P][S];
 

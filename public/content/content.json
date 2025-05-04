@@ -1,9 +1,9 @@
 {
   "home": {
     "section1": {
-      "title": "Hello World 1!",
+      "title": "Hello World 1!!!",
       "description1": "Это описание домашней страницы 1!",
-      "image1": "1746369515804-wolf-grey.jpeg",
+      "image1": "/api/media/1746372495114-wolf-grey.jpeg",
       "image2": "1746204817732-wolf-black.jpeg",
       "image3": "1746204817732-wolf-black.jpeg"
     },
@@ -19,7 +19,7 @@
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
       "description3": "Информация о нашей компании 3",
-      "image1": "1746369534838-wolf-black.jpeg",
+      "image1": "1746372495114-wolf-grey.jpeg",
       "image2": "1746201296124-gemini_generated_image_ttimmnttimmnttim.png"
     }
   }

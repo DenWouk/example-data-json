@@ -5,6 +5,7 @@ import { getContent } from "@/lib/fs-utils";
 
 export default async function HomePage() {
   const content = await getContent(); // getContent уже возвращает нормализованный AppContent или {}
+  
   const homeContent = content.home ?? {}; // Используем ?? {} для безопасности
   const section1 = homeContent.section1 ?? {}; // Используем ?? {} для безопасности
   const section2 = homeContent.section2 ?? {}; // Используем ?? {} для безопасности
@@ -27,7 +28,7 @@ export default async function HomePage() {
 
       {imageDataS1I1.url && (
         <Image
-          src={imageDataS1I1.url}
+          src={content.home.section1.image1}
           alt={"image"} // Более осмысленный alt
           width={300}
           height={300}

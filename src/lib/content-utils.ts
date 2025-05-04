@@ -29,7 +29,6 @@ export function normalizeSectionData(section: unknown): SectionDataType {
   return normalized;
 }
 
-// Функция normalizeAppContent больше не нужна, так как нет типа AppContent
 
 /**
  * Проверяет, является ли ключ поля ключом для изображения.

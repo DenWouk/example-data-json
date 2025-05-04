@@ -116,6 +116,7 @@ export async function safeRename(
  */
 export async function getContent(): Promise<AppContent> {
   let fileContent: string;
+  
   try {
     fileContent = await fs.readFile(contentFilePath, "utf-8");
     console.log(`[getContent] Successfully read ${contentFilePath}`);

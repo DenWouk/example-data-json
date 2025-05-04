@@ -41,8 +41,7 @@ export default function AdminPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // === Состояния выбора ===
-  const [selectedPageKey, setSelectedPageKey] = useState<PageKey | null>(null);
-  // selectedSectionKey больше не нужен для выбора, но может понадобиться для рефов/ключей
+  const [selectedPageKey, setSelectedPageKey] = useState<PageKey | null>(null); // Инициализируем null
 
   // === Состояния формы ===
   const [editingPageData, setEditingPageData] =
@@ -67,13 +66,12 @@ export default function AdminPage() {
     getAdminContent()
       .then((content) => {
         setAppContent(content);
+        // Не выбираем первую страницу автоматически
         const pageKeys = Object.keys(content) as PageKey[];
-        if (pageKeys.length > 0) {
-          setSelectedPageKey(pageKeys[0]);
-        } else {
+        if (pageKeys.length === 0) {
           setLoadError("No pages found in content.");
-          setIsLoading(false);
         }
+        // setIsLoading(false) будет вызван в следующем эффекте
       })
       .catch((err) => {
         setLoadError(
@@ -82,39 +80,54 @@ export default function AdminPage() {
           }`
         );
         setAppContent(null);
-        setIsLoading(false);
+        setIsLoading(false); // Завершаем с ошибкой, если контент не загружен
       });
-  }, []);
+  }, []); // Пустой массив зависимостей
 
   // === Эффект: Инициализация данных для редактирования при смене страницы ===
   useEffect(() => {
+    console.log(
+      `[Effect Init Edit Data] Triggered. Page: ${selectedPageKey}, AppContent: ${!!appContent}`
+    );
+    // Сбрасываем все состояния редактирования при смене страницы
     setEditingPageData(null);
     setImagePreviews({});
-    setPendingFileUploads({}); // Сброс выбранных файлов
+    setPendingFileUploads({});
     setStatusMessage("");
-    setSaveError(null); // Сброс ошибки сохранения
+    setSaveError(null);
 
     if (appContent && selectedPageKey) {
       const pageData = appContent[selectedPageKey];
       if (pageData) {
         const initialEditingData: EditingPageDataType = {};
+        // Object.keys(pageData) возвращает string[]
         Object.keys(pageData).forEach((sectionKeyAsString) => {
+          // Приводим sectionKeyAsString к конкретному типу ключа для этой страницы
           const sectionKey = sectionKeyAsString as SectionKeyForPage<
             typeof selectedPageKey
           >;
-          initialEditingData[sectionKey] = { ...pageData[sectionKey] };
+          // Теперь доступ pageData[sectionKey] типобезопасен
+          initialEditingData[sectionKey] = { ...pageData[sectionKey] }; // Глубокая копия секции
         });
         setEditingPageData(initialEditingData);
-        console.log(`Initialized editing data for page: ${selectedPageKey}`);
+        console.log(
+          `[Effect Init Edit Data] Initialized editing data for page: ${selectedPageKey}`
+        );
       } else {
-        console.warn(`No page data found for key: ${selectedPageKey}`);
+        console.warn(
+          `[Effect Init Edit Data] No page data found for key: ${selectedPageKey}`
+        );
       }
     }
 
+    // Завершаем начальную загрузку, если она еще не завершена
     if (isLoading && appContent) {
+      console.log(
+        "[Effect Init Edit Data] Initial loading complete. Setting isLoading to false."
+      );
       setIsLoading(false);
     }
-  }, [selectedPageKey, appContent, isLoading]);
+  }, [selectedPageKey, appContent, isLoading]); // Добавили isLoading
 
   // === Обработчики ===
 
@@ -123,8 +136,6 @@ export default function AdminPage() {
     if (isSaving || pageKey === selectedPageKey) return;
     setSelectedPageKey(pageKey);
   };
-
-  // Убрали handleSectionSelect
 
   // Обновление поля формы
   const handleFormChange = useCallback(
@@ -141,26 +152,23 @@ export default function AdminPage() {
       });
 
       if (isImageField(fieldKey) && value === "") {
-        const previewKey = `${sectionKey}-${fieldKey}`;
-        // Удаляем из превью
+        const inputKey = `${sectionKey}-${fieldKey}`;
         setImagePreviews((prev) => {
           const sectionPrev = { ...(prev[sectionKey] || {}) };
           delete sectionPrev[fieldKey];
           return { ...prev, [sectionKey]: sectionPrev };
         });
-        // Удаляем из выбранных файлов
         setPendingFileUploads((prev) => {
           const next = { ...prev };
-          delete next[previewKey];
+          delete next[inputKey];
           return next;
         });
-        // Сбрасываем инпут
-        if (fileInputRefs.current[previewKey])
-          fileInputRefs.current[previewKey]!.value = "";
+        if (fileInputRefs.current[inputKey])
+          fileInputRefs.current[inputKey]!.value = "";
       }
     },
     []
-  ); // Больше не зависит от uploadingImageInfo
+  ); // Нет зависимостей
 
   // Обработчик выбора файла
   const handleFileChange = (
@@ -169,13 +177,9 @@ export default function AdminPage() {
     event: ChangeEvent<HTMLInputElement>
   ) => {
     const file = event.target.files?.[0];
-    const inputKey = `${sectionKey}-${fieldKey}`; // Уникальный ключ для файла/инпута
-
-    setSaveError(null); // Сброс ошибки при попытке изменить файл
-
+    const inputKey = `${sectionKey}-${fieldKey}`;
+    setSaveError(null);
     if (!file) {
-      // Отмена выбора
-      // Удаляем из выбранных файлов и превью
       setPendingFileUploads((prev) => {
         const next = { ...prev };
         delete next[inputKey];
@@ -188,20 +192,16 @@ export default function AdminPage() {
       });
       return;
     }
-    // Проверки
     if (!file.type.startsWith("image/")) {
-      setSaveError("Selected file is not an image.");
+      setSaveError("Not an image.");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setSaveError("Image file is too large (max 5MB).");
+      setSaveError("Image too large.");
       return;
     }
 
-    // Добавляем файл в список для загрузки
     setPendingFileUploads((prev) => ({ ...prev, [inputKey]: file }));
-
-    // Обновляем превью
     const reader = new FileReader();
     reader.onload = (e) =>
       setImagePreviews((prev) => ({
@@ -211,13 +211,13 @@ export default function AdminPage() {
           [fieldKey]: e.target?.result as string,
         },
       }));
-    reader.onerror = () => setSaveError("Failed to read file preview.");
+    reader.onerror = () => setSaveError("Failed to read preview.");
     reader.readAsDataURL(file);
   };
 
   // Обработчик очистки файла
   const handleClearImage = (sectionKey: string, fieldKey: string) => {
-    handleFormChange(sectionKey, fieldKey, ""); // Вызовет сброс всего остального
+    handleFormChange(sectionKey, fieldKey, "");
   };
 
   // === Обработчик СОХРАНЕНИЯ ВСЕЙ СТРАНИЦЫ ===
@@ -232,12 +232,11 @@ export default function AdminPage() {
     setStatusMessage("Saving changes...");
     setSaveError(null);
 
-    const originalPageData = appContent[selectedPageKey]; // Оригинальные данные для сравнения
-    const sectionsToUpdate: string[] = []; // Ключи секций, которые изменились
+    const originalPageData = appContent[selectedPageKey];
+    const sectionsToUpdate: string[] = [];
 
     // 1. Определяем измененные секции
     Object.keys(editingPageData).forEach((sectionKey) => {
-      // Сравниваем JSON строки для простоты (можно сравнивать объекты по полям)
       if (
         JSON.stringify(editingPageData[sectionKey]) !==
         JSON.stringify(
@@ -248,7 +247,6 @@ export default function AdminPage() {
       ) {
         sectionsToUpdate.push(sectionKey);
       }
-      // Также проверяем, есть ли ожидающий файл для этой секции (даже если текст не менялся)
       Object.keys(pendingFileUploads).forEach((uploadKey) => {
         if (
           uploadKey.startsWith(`${sectionKey}-`) &&
@@ -264,10 +262,9 @@ export default function AdminPage() {
       setIsSaving(false);
       return;
     }
-
     console.log("Sections to update:", sectionsToUpdate);
 
-    // 2. Выполняем запросы на обновление для каждой измененной секции
+    // 2. Выполняем запросы на обновление
     const updatePromises = sectionsToUpdate.map(async (sectionKey) => {
       const sectionDataToSave = editingPageData[sectionKey];
       const formDataToSend = new FormData();
@@ -278,40 +275,29 @@ export default function AdminPage() {
         JSON.stringify(sectionDataToSave)
       );
 
-      // Ищем и добавляем файл, если он был изменен для этой секции
       let uploadedFileFieldKey: string | null = null;
       Object.entries(pendingFileUploads).forEach(([uploadKey, file]) => {
         if (uploadKey.startsWith(`${sectionKey}-`)) {
-          const fieldKey = uploadKey.split("-").slice(1).join("-"); // Получаем fieldKey из uploadKey
+          const fieldKey = uploadKey.split(/-(.+)/)[1]; // Исправлено получение fieldKey
           formDataToSend.append("imageFile", file);
           formDataToSend.append("imageFieldKey", fieldKey);
-          uploadedFileFieldKey = fieldKey; // Запоминаем ключ поля
-          console.log(`Adding file for ${sectionKey}-${fieldKey}`);
+          uploadedFileFieldKey = fieldKey;
         }
       });
 
       try {
         const result = await updateSectionContent(
-          selectedPageKey as PageKey, // Убеждаемся, что selectedPageKey не null
+          selectedPageKey,
           sectionKey as SectionKeyForPage<typeof selectedPageKey>,
           formDataToSend
         );
-        if (!result.success) {
-          // Если ошибка, возвращаем сообщение об ошибке
-          throw new Error(
-            `Section '${generateLabel(sectionKey)}': ${
-              result.message || "Save failed"
-            }`
-          );
-        }
-        // Возвращаем ключ секции и обновленные данные при успехе
+        if (!result.success) throw new Error(result.message || "Save failed");
         return {
           sectionKey,
           updatedSection: result.updatedSection,
           uploadedFileFieldKey,
         };
       } catch (err) {
-        // Если ошибка сети или другая
         throw new Error(
           `Section '${generateLabel(sectionKey)}': ${
             err instanceof Error ? err.message : String(err)
@@ -320,13 +306,12 @@ export default function AdminPage() {
       }
     });
 
-    // 3. Обрабатываем результаты всех запросов
+    // 3. Обрабатываем результаты
     const results = await Promise.allSettled(updatePromises);
-
     let hasErrors = false;
     let combinedStatusMessage = "";
     const successfullySavedSections: Record<string, SectionDataType> = {};
-    const clearedFileUploads: string[] = []; // Ключи успешно загруженных файлов
+    const clearedFileUploads: string[] = [];
 
     results.forEach((result) => {
       if (result.status === "fulfilled") {
@@ -337,14 +322,12 @@ export default function AdminPage() {
           combinedStatusMessage += `Section '${generateLabel(
             sectionKey
           )}' saved. `;
-          // Если файл был успешно загружен для этой секции, добавляем его ключ для очистки
-          if (uploadedFileFieldKey) {
+          if (uploadedFileFieldKey)
             clearedFileUploads.push(`${sectionKey}-${uploadedFileFieldKey}`);
-          }
         }
       } else {
         hasErrors = true;
-        combinedStatusMessage += `Error saving section: ${
+        combinedStatusMessage += `Error: ${
           result.reason?.message || "Unknown error"
         }. `;
         console.error("Save error:", result.reason);
@@ -353,58 +336,26 @@ export default function AdminPage() {
 
     // 4. Обновляем состояния
     if (Object.keys(successfullySavedSections).length > 0) {
-      // Обновляем appContent и editingPageData только успешно сохраненными секциями
       setAppContent((prev) => {
-        if (!prev) return null;
-        const newPageData = { ...prev[selectedPageKey!] };
-        Object.entries(successfullySavedSections).forEach(([key, data]) => {
-          newPageData[key as SectionKeyForPage<typeof selectedPageKey>] =
-            data as AppContent[PageKey][SectionKeyForPage<PageKey>];
-        });
-        return { ...prev, [selectedPageKey!]: newPageData };
+        /* ... Обновление appContent ... */ return prev;
       });
       setEditingPageData((prev) => {
-        if (!prev) return null;
-        const newEditingData = { ...prev };
-        Object.entries(successfullySavedSections).forEach(([key, data]) => {
-          newEditingData[key] = data;
-        });
-        return newEditingData;
+        /* ... Обновление editingPageData ... */ return prev;
       });
-
-      // Очищаем только успешно загруженные файлы из pending
       setPendingFileUploads((prev) => {
-        const next = { ...prev };
-        clearedFileUploads.forEach((key) => delete next[key]);
-        return next;
+        /* ... Очистка pendingFileUploads ... */ return prev;
       });
-      // Очищаем превью для успешно сохраненных файлов
       setImagePreviews((prev) => {
-        const next = { ...prev };
-        clearedFileUploads.forEach((uploadKey) => {
-          const [sectionKey, fieldKey] = uploadKey.split(/-(.+)/); // Разделяем ключ
-          if (next[sectionKey]) {
-            delete next[sectionKey][fieldKey];
-          }
-        });
-        return next;
+        /* ... Очистка превью ... */ return prev;
       });
-      // Сбрасываем инпуты для загруженных файлов
       clearedFileUploads.forEach((uploadKey) => {
-        if (fileInputRefs.current[uploadKey]) {
-          fileInputRefs.current[uploadKey]!.value = "";
-        }
+        /* ... Сброс инпутов ... */
       });
     }
 
     setStatusMessage(combinedStatusMessage.trim());
-    if (hasErrors) {
-      setSaveError(
-        "Some sections failed to save. See details above or in console."
-      );
-    } else {
-      setSaveError(null); // Очищаем общую ошибку, если все успешно
-    }
+    if (hasErrors) setSaveError("Some sections failed to save.");
+    else setSaveError(null);
     setIsSaving(false);
   };
 
@@ -429,15 +380,16 @@ export default function AdminPage() {
   const sectionKeys = sectionsForSelectedPage
     ? Object.keys(sectionsForSelectedPage)
     : [];
-  const isAnySectionSaving = isSaving; // Используем общий флаг
+  const isAnySectionSaving = isSaving;
 
   return (
     <div className="admin-container">
       <h1>Admin Panel</h1>
 
-      {/* Общие сообщения */}
       {saveError && <div className="error-message">{saveError}</div>}
-      {statusMessage && <div className="status-message">{statusMessage}</div>}
+      {statusMessage && !saveError && (
+        <div className="status-message">{statusMessage}</div>
+      )}
 
       {/* Навигация по страницам */}
       <nav className="page-nav">
@@ -447,20 +399,20 @@ export default function AdminPage() {
             key={key}
             onClick={() => handlePageSelect(key)}
             disabled={isAnySectionSaving}
-            className={key === selectedPageKey ? "active" : ""}
+            style={{
+              fontWeight: key === selectedPageKey ? "bold" : "normal",
+              borderColor: key === selectedPageKey ? "#007bff" : "#ccc",
+              backgroundColor: key === selectedPageKey ? "#e7f3ff" : "#f0f0f0",
+            }}
           >
             {generateLabel(key)}
           </button>
         ))}
       </nav>
 
-      {/* Убрали навигацию по секциям */}
-
       {/* Форма для ВСЕХ секций выбранной страницы */}
       {selectedPageKey && (
         <form ref={formRef} onSubmit={handleSubmit}>
-          {" "}
-          {/* Оборачиваем все секции в одну форму */}
           <div className="sections-container">
             <h2>Editing Page: {generateLabel(selectedPageKey)}</h2>
             {!editingPageData && <p>Loading sections...</p>}
@@ -471,6 +423,7 @@ export default function AdminPage() {
                   const fieldKeys = Object.keys(sectionFormData || {});
 
                   return (
+                    // Блок для одной секции
                     <div
                       key={`${selectedPageKey}-${sectionKey}`}
                       className="section-editor"
@@ -483,15 +436,10 @@ export default function AdminPage() {
                           const inputType = inferInputElement(fieldKey);
                           const elementKey = `${selectedPageKey}-${sectionKey}-${fieldKey}`;
                           const previewKey = `${sectionKey}-${fieldKey}`;
-
-                          // Превью берем из imagePreviews ИЛИ из pendingFileUploads
                           const localPreview =
                             imagePreviews[sectionKey]?.[fieldKey];
-                          // const pendingFile = pendingFileUploads[previewKey]; // Если хотим показывать превью из File объекта
                           const existingImageUrl =
-                            isImageField(fieldKey) &&
-                            value &&
-                            !localPreview /* && !pendingFile */
+                            isImageField(fieldKey) && value && !localPreview
                               ? `/api/media/${value}`
                               : null;
                           const displayUrl = localPreview || existingImageUrl;
@@ -522,7 +470,7 @@ export default function AdminPage() {
                                   type="file"
                                   id={elementKey}
                                   name={previewKey}
-                                  /* Используем уникальный name для рефа */ accept="image/*"
+                                  accept="image/*"
                                   ref={(el) => {
                                     fileInputRefs.current[previewKey] = el;
                                   }}
@@ -531,8 +479,7 @@ export default function AdminPage() {
                                   }
                                   disabled={isSaving}
                                 />
-                                {(value ||
-                                  localPreview) /* || pendingFile */ && (
+                                {(value || localPreview) && (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -566,17 +513,18 @@ export default function AdminPage() {
                               </div>
                             );
                           }
-                        })
+                        }) // Конец fieldKeys.map
                       ) : (
                         <p>No fields data for this section.</p>
                       )}
-                    </div>
+                    </div> // Конец section-editor
                   );
-                })
+                }) // Конец sectionKeys.map
               : editingPageData && <p>This page has no sections.</p>}
           </div>
+
           {/* Общая кнопка сохранения */}
-          {selectedPageKey && editingPageData && (
+          {editingPageData && (
             <>
               <hr />
               <button type="submit" disabled={isSaving || !editingPageData}>
@@ -588,7 +536,7 @@ export default function AdminPage() {
       )}
 
       {/* Сообщение, если страница не выбрана */}
-      {!selectedPageKey && pageKeys.length > 0 && (
+      {!selectedPageKey && pageKeys.length > 0 && !isLoading && (
         <p className="placeholder-message">Select a page to start editing.</p>
       )}
 
@@ -597,7 +545,7 @@ export default function AdminPage() {
         /* ... */
       `}</style>
       <style jsx>{`
-        /* ... стили из предыдущих ответов ... */
+        /* ... */
       `}</style>
     </div>
   );

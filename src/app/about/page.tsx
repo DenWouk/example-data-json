@@ -1,13 +1,10 @@
 // src/app/page.tsx
 import Image from "next/image";
-import { prepareImageData } from "@/lib/image-utils"; // Импортируем новую утилиту
 import { getContent } from "@/lib/fs-utils";
 
 export default async function AboutPage() {
   const content = await getContent();
   const about = content.about;
-
-  
 
   return (
     <div>

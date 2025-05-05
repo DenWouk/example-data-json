@@ -1,8 +1,10 @@
 // src/lib/fs-utils.ts
 import fs from "fs/promises";
 import path from "path";
-// Импортируем ТОЛЬКО SpecificAppContent
+// Импортируем ТОЛЬКО AppContent
 import { AppContent } from "@/types/types";
+// Импортируем утилиту для проверки ключа изображения
+import { isImageField } from "@/lib/content-utils"; // <--- Добавлен импорт
 
 // --- Константы путей ---
 const mediaFolderPath = path.join(process.cwd(), "media");
@@ -44,7 +46,10 @@ export function getSafeMediaFilePath(filename: string): string {
 export async function checkMediaFileExists(
   filename: string | null | undefined
 ): Promise<boolean> {
-  if (!filename) return false;
+  if (!filename || typeof filename !== "string" || filename.trim() === "") {
+    // Добавлена проверка на пустую строку и тип
+    return false;
+  }
   try {
     // Используем безопасную функцию для получения пути
     await fs.access(getSafeMediaFilePath(filename));
@@ -66,7 +71,6 @@ export async function safeUnlink(
     await fs.unlink(filePath);
     console.log(`Successfully deleted file: ${filePath}`); // Лог с полным путем
   } catch (error: unknown) {
-    // Проверяем тип ошибки для доступа к 'code'
     if (
       typeof error === "object" &&
       error !== null &&
@@ -75,9 +79,7 @@ export async function safeUnlink(
     ) {
       // Файл не найден, это ожидаемо в некоторых случаях, просто игнорируем
     } else {
-      // Логируем другие ошибки
       console.error(`Error deleting file ${filePath || filename}:`, error);
-      // Не бросаем ошибку дальше в этом случае
     }
   }
 }
@@ -93,7 +95,6 @@ export async function safeRename(
   let oldPath = "";
   let newPath = "";
   try {
-    // Используем безопасную функцию для обоих путей
     oldPath = getSafeMediaFilePath(oldFilename);
     newPath = getSafeMediaFilePath(newFilename);
     await fs.rename(oldPath, newPath);
@@ -103,29 +104,89 @@ export async function safeRename(
       `Error renaming file ${oldFilename} to ${newFilename}:`,
       error
     );
-    throw error; // Пробрасываем ошибку дальше
+    throw error;
   }
 }
 
 // --- Функции для контента ---
 
 /**
- * Читает и парсит файл content.json.
- * Возвращает Promise<SpecificAppContent> или выбрасывает ошибку при чтении/парсинге/невалидной структуре.
- * НЕ возвращает пустой объект {} в случае ошибки.
+ * Рекурсивно обходит объект контента и обрабатывает поля изображений.
+ * @param node - Текущий узел (объект или значение).
+ * @param currentPath - Строка пути к текущему узлу (для логов).
+ */
+async function processContentNode(
+  node: any,
+  currentPath: string
+): Promise<void> {
+  // Проверяем, что это объект (и не массив, не null)
+  if (typeof node !== "object" || node === null || Array.isArray(node)) {
+    return; // Не объект или массив, прекращаем обработку этой ветки
+  }
+
+  // Асинхронно обрабатываем все ключи объекта
+  const promises = Object.keys(node).map(async (key) => {
+    const value = node[key];
+    const fullPath = currentPath ? `${currentPath}.${key}` : key; // Строим полный путь ключа
+
+    if (isImageField(key)) {
+      // Это ключ для изображения
+      const imageFilename = typeof value === "string" ? value.trim() : ""; // Получаем имя файла, удаляем пробелы
+
+      if (!imageFilename) {
+        // Имя файла пустое
+        console.warn(
+          `[getContent] Изображение не выбрано для ключа: ${fullPath}`
+        );
+        node[key] = ""; // Устанавливаем пустую строку
+      } else {
+        // Имя файла есть, проверяем существование файла
+        const fileExists = await checkMediaFileExists(imageFilename);
+        if (fileExists) {
+          // Файл существует, формируем полный URL
+          node[key] = `/api/media/${imageFilename}`;
+          console.log(
+            `[getContent] Image path processed for ${fullPath}: ${node[key]}`
+          );
+        } else {
+          // Файл не найден
+          console.warn(
+            `[getContent] Изображение отсутствует в папке media: Файл '${imageFilename}' для ключа '${fullPath}' не найден.`
+          );
+          node[key] = ""; // Устанавливаем пустую строку
+        }
+      }
+    } else if (typeof value === "object" && value !== null) {
+      // Если значение - вложенный объект, рекурсивно обрабатываем его
+      await processContentNode(value, fullPath);
+    }
+    // Если это не поле изображения и не объект, ничего не делаем (оставляем как есть)
+  });
+
+  // Дожидаемся завершения обработки всех ключей на этом уровне
+  await Promise.all(promises);
+}
+
+/**
+ * Читает, парсит и ОБРАБАТЫВАЕТ файл content.json.
+ * Обработка включает:
+ * - Преобразование путей к изображениям (ключи содержащие 'image'):
+ *   - Проверка существования файла в папке 'media'.
+ *   - Добавление префикса '/api/media/' к существующим файлам.
+ *   - Установка пустой строки ('') и вывод предупреждения, если файл не указан или не найден.
+ * Возвращает Promise<AppContent> с обработанными путями или выбрасывает ошибку при чтении/парсинге.
  */
 export async function getContent(): Promise<AppContent> {
   let fileContent: string;
-  
+
   try {
     fileContent = await fs.readFile(contentFilePath, "utf-8");
-    console.log(`[getContent] Successfully read ${contentFilePath}`);
+    // console.log(`[getContent] Successfully read ${contentFilePath}`); // Можно раскомментировать для отладки
   } catch (readError: unknown) {
     console.error(
       `[getContent] Error reading content file (${contentFilePath}):`,
       readError
     );
-    // Перебрасываем ошибку, не возвращаем {}
     throw new Error(
       `Failed to read content file. Reason: ${
         readError instanceof Error ? readError.message : String(readError)
@@ -136,15 +197,12 @@ export async function getContent(): Promise<AppContent> {
   let jsonData: unknown;
   try {
     jsonData = JSON.parse(fileContent);
-    console.log(
-      `[getContent] Successfully parsed JSON from ${contentFilePath}`
-    );
+    // console.log(`[getContent] Successfully parsed JSON from ${contentFilePath}`); // Можно раскомментировать для отладки
   } catch (parseError: unknown) {
     console.error(
       `[getContent] Error parsing JSON from ${contentFilePath}:`,
       parseError
     );
-    // Перебрасываем ошибку, не возвращаем {}
     throw new Error(
       `Failed to parse content file as JSON. Reason: ${
         parseError instanceof Error ? parseError.message : String(parseError)
@@ -152,7 +210,6 @@ export async function getContent(): Promise<AppContent> {
     );
   }
 
-  // Простейшая проверка, что это объект (не массив, не null)
   if (
     typeof jsonData !== "object" ||
     jsonData === null ||
@@ -165,29 +222,60 @@ export async function getContent(): Promise<AppContent> {
     throw new Error("Invalid content structure: Root level must be an object.");
   }
 
-  // Никакой валидации Zod или нормализации по запросу.
-  // Просто делаем type assertion, полагаясь на то, что структура верна.
-  // Если структура неверна, ошибка произойдет позже при доступе к полям.
-  console.log(
-    "[getContent] Assuming content structure matches SpecificAppContent based on successful read/parse."
-  );
+  // --- НАЧАЛО ОБРАБОТКИ КОНТЕНТА ---
+  console.log("[getContent] Starting content processing (image paths)...");
+  await processContentNode(jsonData, ""); // Запускаем рекурсивную обработку
+  console.log("[getContent] Content processing finished.");
+  // --- КОНЕЦ ОБРАБОТКИ КОНТЕНТА ---
+
+  // Теперь jsonData содержит обработанные пути к изображениям
+  // Делаем type assertion, т.к. структура та же, только значения image полей изменены
   return jsonData as AppContent;
 }
 
 /**
  * Записывает данные в файл content.json.
- * Принимает объект, соответствующий интерфейсу SpecificAppContent.
- * @param newContent - Объект контента для записи.
+ * Принимает объект, соответствующий интерфейсу AppContent.
+ * ВАЖНО: Перед записью УБИРАЕТ префикс '/api/media/' из путей к изображениям,
+ * чтобы в content.json хранились только базовые имена файлов.
+ * @param contentToWrite - Объект контента для записи.
  */
-export async function writeContent(
-  newContent: AppContent
-): Promise<void> {
+export async function writeContent(contentToWrite: AppContent): Promise<void> {
   try {
-    // Записываем как есть, форматируя JSON для читаемости
-    const dataString = JSON.stringify(newContent, null, 2); // Отступы в 2 пробела
+    // Создаем глубокую копию, чтобы не модифицировать оригинальный объект,
+    // который может использоваться где-то еще в рантайме
+    const contentCopy = JSON.parse(JSON.stringify(contentToWrite));
+
+    // Рекурсивная функция для очистки путей перед записью
+    const cleanupImagePaths = (node: any): void => {
+      if (typeof node !== "object" || node === null || Array.isArray(node)) {
+        return;
+      }
+      Object.keys(node).forEach((key) => {
+        const value = node[key];
+        if (
+          isImageField(key) &&
+          typeof value === "string" &&
+          value.startsWith("/api/media/")
+        ) {
+          // Убираем префикс, оставляем только имя файла
+          node[key] = value.substring("/api/media/".length);
+          // console.log(`[writeContent] Cleaned image path for ${key}: ${node[key]}`); // Для отладки
+        } else if (typeof value === "object" && value !== null) {
+          cleanupImagePaths(value); // Рекурсивный вызов для вложенных объектов
+        }
+      });
+    };
+
+    console.log("[writeContent] Cleaning image paths before writing...");
+    cleanupImagePaths(contentCopy); // Очищаем пути в копии
+    console.log("[writeContent] Image paths cleaned.");
+
+    // Записываем очищенные данные
+    const dataString = JSON.stringify(contentCopy, null, 2); // Отступы в 2 пробела
     await fs.writeFile(contentFilePath, dataString, "utf-8");
     console.log(
-      `[writeContent] Content file ${contentFilePath} updated successfully.`
+      `[writeContent] Content file ${contentFilePath} updated successfully with cleaned image paths.`
     );
   } catch (error: unknown) {
     console.error(
@@ -201,7 +289,3 @@ export async function writeContent(
     );
   }
 }
-
-// Функции для бэкапа (ex-content.json) не используются и убраны для чистоты
-// async function readExContentFile...
-// async function writeExContentFile...

@@ -440,8 +440,9 @@ export default function AdminPage() {
                             imagePreviews[sectionKey]?.[fieldKey];
                           const existingImageUrl =
                             isImageField(fieldKey) && value && !localPreview
-                              ? `/api/media/${value}`
+                              ? value
                               : null;
+
                           const displayUrl = localPreview || existingImageUrl;
 
                           if (inputType === "file") {

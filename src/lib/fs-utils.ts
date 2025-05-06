@@ -1,34 +1,93 @@
 // src/lib/fs-utils.ts
 import fs from "fs/promises";
 import path from "path";
-// Импортируем ТОЛЬКО AppContent
 import { AppContent } from "@/types/types";
-// Импортируем утилиту для проверки ключа изображения
-import { isImageField } from "@/lib/content-utils"; // <--- Добавлен импорт
+import { isImageField } from "@/lib/content-utils";
 
-// --- Константы путей ---
 const mediaFolderPath = path.join(process.cwd(), "media");
 const contentFolderPath = path.join(process.cwd(), "public", "content");
 const contentFilePath = path.join(contentFolderPath, "content.json");
 
-// --- Функции для медиа ---
+// Список поддерживаемых расширений для поиска, если в content.json только базовое имя
+const SUPPORTED_IMAGE_EXTENSIONS = [
+  ".jpeg",
+  ".jpg",
+  ".png",
+  ".webp",
+  ".gif",
+  ".svg",
+];
 
 /**
- * Получает полный, безопасный путь к файлу в папке media,
- * работая ТОЛЬКО с базовым именем файла для предотвращения Path Traversal.
- * @param filename - Имя файла (путь будет отброшен).
- * @returns Безопасный абсолютный путь к файлу в папке media.
- * @throws Error если имя файла некорректно.
+ * Находит реальное имя файла в папке media по его базовому имени.
+ * Ищет файлы с поддерживаемыми расширениями.
+ * @param baseFilename - Базовое имя файла (без расширения).
+ * @returns Полное имя файла с расширением или null, если не найден.
  */
-export function getSafeMediaFilePath(filename: string): string {
-  // Извлекаем только имя файла + расширение, отбрасывая потенциальный путь
-  const baseFilename = path.basename(filename);
+export async function findActualFilenameInMedia(
+  baseFilename: string
+): Promise<string | null> {
+  if (!baseFilename || baseFilename.includes(".")) {
+    // Если передано уже с расширением или пустое, считаем, что это не базовое имя для поиска
+    // или некорректный ввод для этой функции.
+    // Если это полный путь, getSafeMediaFilePath ниже обработает.
+    // Если это базовое имя но с точкой, поиск может быть некорректным.
+    // Для простоты, эта функция ожидает чистое базовое имя.
+    // Если же это имя типа 'my.file' и оно без расширения, то поиск будет 'my.file.jpg' и тд.
+    // Для имен файлов с точками, которые НЕ являются разделителем расширения,
+    // эта логика может потребовать доработки или более строгого определения "базового имени".
+    // Пока считаем, что точка в baseFilename не предполагается.
+    if (baseFilename && baseFilename.includes(".")) {
+      // Попытка проверить, существует ли файл как есть, если в baseFilename есть точка.
+      try {
+        await fs.access(getSafeMediaFilePath(baseFilename));
+        return baseFilename;
+      } catch {
+        // Файл не найден как есть, продолжаем поиск по расширениям, если это осмысленно.
+        // Но для простоты текущей реализации, если есть точка, мы не будем искать по расширениям.
+        // console.warn(`[findActualFilenameInMedia] baseFilename '${baseFilename}' contains a dot, treating as full name or invalid for extension search.`);
+        // return null; // или вернуть baseFilename и пусть checkMediaFileExists/safeUnlink проверят его как есть
+      }
+    }
+  }
 
-  // Дополнительная нормализация и проверка на выход за пределы
+  try {
+    const files = await fs.readdir(mediaFolderPath);
+    for (const ext of SUPPORTED_IMAGE_EXTENSIONS) {
+      const fullFilename = `${baseFilename}${ext}`;
+      if (files.includes(fullFilename)) {
+        return fullFilename;
+      }
+    }
+    // Если есть файлы вида baseFilename-что-то.ext (например, после Date.now()),
+    // этот поиск их не найдет. Он ищет точное совпадение baseFilename + ext.
+  } catch (error) {
+    // Если папка media не существует, fs.readdir выдаст ошибку
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      console.warn(
+        `[findActualFilenameInMedia] Media folder not found at ${mediaFolderPath}`
+      );
+      return null;
+    }
+    console.error(
+      "[findActualFilenameInMedia] Error reading media directory:",
+      error
+    );
+    return null;
+  }
+  return null;
+}
+
+export function getSafeMediaFilePath(filename: string): string {
+  const baseFilename = path.basename(filename);
   const safeBasename = path
     .normalize(baseFilename)
     .replace(/^(\.\.(\/|\\|$))+/, "");
-
   if (
     safeBasename !== baseFilename ||
     safeBasename.includes("..") ||
@@ -38,38 +97,61 @@ export function getSafeMediaFilePath(filename: string): string {
       `Invalid or potentially unsafe filename detected: ${filename}`
     );
   }
-  // Собираем путь только с безопасным базовым именем файла
   return path.join(mediaFolderPath, safeBasename);
 }
 
-/** Проверяет существование файла в папке media */
 export async function checkMediaFileExists(
-  filename: string | null | undefined
-): Promise<boolean> {
-  if (!filename || typeof filename !== "string" || filename.trim() === "") {
-    // Добавлена проверка на пустую строку и тип
-    return false;
+  filenameOrBasename: string | null | undefined
+): Promise<string | null> {
+  // Возвращает полное имя файла если найден, или null
+  if (
+    !filenameOrBasename ||
+    typeof filenameOrBasename !== "string" ||
+    filenameOrBasename.trim() === ""
+  ) {
+    return null;
   }
+
+  let actualFilenameToTest = filenameOrBasename;
+
+  // Если имя не содержит точки, считаем его базовым и пытаемся найти реальный файл
+  if (!filenameOrBasename.includes(".")) {
+    const foundFullName = await findActualFilenameInMedia(filenameOrBasename);
+    if (!foundFullName) {
+      return null; // Базовое имя не найдено ни с одним расширением
+    }
+    actualFilenameToTest = foundFullName;
+  }
+  // Если имя содержало точку, или мы нашли полное имя по базовому,
+  // actualFilenameToTest теперь полное имя. Проверяем его.
   try {
-    // Используем безопасную функцию для получения пути
-    await fs.access(getSafeMediaFilePath(filename));
-    return true;
+    await fs.access(getSafeMediaFilePath(actualFilenameToTest));
+    return actualFilenameToTest; // Файл существует, возвращаем его полное имя
   } catch {
-    return false;
+    return null; // Файл не найден
   }
 }
 
-/** Безопасно удаляет файл из media (игнорирует ENOENT) */
 export async function safeUnlink(
-  filename: string | null | undefined
+  filenameOrBasename: string | null | undefined
 ): Promise<void> {
-  if (!filename) return;
+  if (!filenameOrBasename) return;
+
+  let actualFilenameToDelete = filenameOrBasename;
+  if (!filenameOrBasename.includes(".")) {
+    const foundFullName = await findActualFilenameInMedia(filenameOrBasename);
+    if (!foundFullName) {
+      // console.warn(`[safeUnlink] File with base name '${filenameOrBasename}' not found to delete.`);
+      return; // Нечего удалять
+    }
+    actualFilenameToDelete = foundFullName;
+  }
+
   let filePath = "";
   try {
-    // Используем безопасную функцию для получения пути
-    filePath = getSafeMediaFilePath(filename);
+    filePath = getSafeMediaFilePath(actualFilenameToDelete);
     await fs.unlink(filePath);
-    console.log(`Successfully deleted file: ${filePath}`); // Лог с полным путем
+    console.log(`Successfully deleted file: ${filePath}`);
   } catch (error: unknown) {
     if (
       typeof error === "object" &&
@@ -77,118 +159,120 @@ export async function safeUnlink(
       "code" in error &&
       error.code === "ENOENT"
     ) {
-      // Файл не найден, это ожидаемо в некоторых случаях, просто игнорируем
+      // Файл не найден, это ожидаемо
     } else {
-      console.error(`Error deleting file ${filePath || filename}:`, error);
+      console.error(
+        `Error deleting file ${filePath || actualFilenameToDelete}:`,
+        error
+      );
     }
   }
 }
 
-/** Безопасно переименовывает файл в media */
 export async function safeRename(
-  oldFilename: string | null | undefined,
-  newFilename: string | null | undefined
+  oldFilenameOrBasename: string, // Может быть "image" или "image.jpg"
+  newFullFilename: string // Должно быть "prev-image.jpg" или "image.png"
 ): Promise<void> {
-  if (!oldFilename || !newFilename) {
+  if (!oldFilenameOrBasename || !newFullFilename) {
     throw new Error("Old or new filename is missing for rename operation.");
   }
+
+  let actualOldFullFilename = oldFilenameOrBasename;
+  if (!oldFilenameOrBasename.includes(".")) {
+    const foundFullName = await findActualFilenameInMedia(
+      oldFilenameOrBasename
+    );
+    if (!foundFullName) {
+      throw new Error(
+        `[safeRename] Old file with base name '${oldFilenameOrBasename}' not found for rename.`
+      );
+    }
+    actualOldFullFilename = foundFullName;
+  }
+  // Теперь actualOldFullFilename - это полное имя старого файла
+
   let oldPath = "";
   let newPath = "";
   try {
-    oldPath = getSafeMediaFilePath(oldFilename);
-    newPath = getSafeMediaFilePath(newFilename);
+    oldPath = getSafeMediaFilePath(actualOldFullFilename);
+    newPath = getSafeMediaFilePath(newFullFilename); // newFullFilename всегда должен быть полным
+
+    if (oldPath === newPath) {
+      console.warn(
+        `[safeRename] Old path and new path are identical: ${oldPath}. Skipping rename.`
+      );
+      return;
+    }
+
     await fs.rename(oldPath, newPath);
-    console.log(`Successfully renamed ${oldFilename} to ${newFilename}`);
+    console.log(
+      `Successfully renamed ${actualOldFullFilename} to ${newFullFilename}`
+    );
   } catch (error: unknown) {
     console.error(
-      `Error renaming file ${oldFilename} to ${newFilename}:`,
+      `Error renaming file ${actualOldFullFilename} to ${newFullFilename}:`,
       error
     );
-    throw error;
+    throw error; // Перебрасываем ошибку, чтобы action мог ее обработать (например, для отката)
   }
 }
 
-// --- Функции для контента ---
-
-/**
- * Рекурсивно обходит объект контента и обрабатывает поля изображений.
- * @param node - Текущий узел (объект или значение).
- * @param currentPath - Строка пути к текущему узлу (для логов).
- */
 async function processContentNode(
   node: any,
   currentPath: string
 ): Promise<void> {
-  // Проверяем, что это объект (и не массив, не null)
   if (typeof node !== "object" || node === null || Array.isArray(node)) {
-    return; // Не объект или массив, прекращаем обработку этой ветки
+    return;
   }
 
-  // Асинхронно обрабатываем все ключи объекта
   const promises = Object.keys(node).map(async (key) => {
     const value = node[key];
-    const fullPath = currentPath ? `${currentPath}.${key}` : key; // Строим полный путь ключа
+    const fullPathKey = currentPath ? `${currentPath}.${key}` : key;
 
     if (isImageField(key)) {
-      // Это ключ для изображения
-      const imageFilename = typeof value === "string" ? value.trim() : ""; // Получаем имя файла, удаляем пробелы
+      const baseImageFilename = typeof value === "string" ? value.trim() : "";
 
-      if (!imageFilename) {
-        // Имя файла пустое
+      if (!baseImageFilename) {
+        node[key] = ""; // Имя не указано
+      } else if (baseImageFilename.startsWith("/api/media/")) {
+        // Уже обработанный путь (например, при глубоком копировании перед записью)
+        // Оставляем как есть, или можно было бы извлечь полное имя и перепроверить
         console.warn(
-          `[getContent] Изображение не выбрано для ключа: ${fullPath}`
+          `[getContent] Path ${fullPathKey} seems already processed: ${baseImageFilename}. Leaving as is.`
         );
-        node[key] = ""; // Устанавливаем пустую строку
       } else {
-        // Имя файла есть, проверяем существование файла
-        const fileExists = await checkMediaFileExists(imageFilename);
-        if (fileExists) {
-          // Файл существует, формируем полный URL
-          node[key] = `/api/media/${imageFilename}`;
-          console.log(
-            `[getContent] Image path processed for ${fullPath}: ${node[key]}`
-          );
+        // Это базовое имя, ищем реальный файл
+        const actualImageFullFilename = await findActualFilenameInMedia(
+          baseImageFilename
+        );
+        if (actualImageFullFilename) {
+          node[key] = `/api/media/${actualImageFullFilename}`; // Формируем URL с полным именем
+          // console.log(`[getContent] Image path processed for ${fullPathKey}: ${node[key]}`);
         } else {
-          // Файл не найден
           console.warn(
-            `[getContent] Изображение отсутствует в папке media: Файл '${imageFilename}' для ключа '${fullPath}' не найден.`
+            `[getContent] Изображение с базовым именем '${baseImageFilename}' для ключа '${fullPathKey}' не найдено в папке media. Установлена пустая строка.`
           );
-          node[key] = ""; // Устанавливаем пустую строку
+          node[key] = "";
         }
       }
     } else if (typeof value === "object" && value !== null) {
-      // Если значение - вложенный объект, рекурсивно обрабатываем его
-      await processContentNode(value, fullPath);
+      await processContentNode(value, fullPathKey);
     }
-    // Если это не поле изображения и не объект, ничего не делаем (оставляем как есть)
   });
-
-  // Дожидаемся завершения обработки всех ключей на этом уровне
   await Promise.all(promises);
 }
 
-/**
- * Читает, парсит и ОБРАБАТЫВАЕТ файл content.json.
- * Обработка включает:
- * - Преобразование путей к изображениям (ключи содержащие 'image'):
- *   - Проверка существования файла в папке 'media'.
- *   - Добавление префикса '/api/media/' к существующим файлам.
- *   - Установка пустой строки ('') и вывод предупреждения, если файл не указан или не найден.
- * Возвращает Promise<AppContent> с обработанными путями или выбрасывает ошибку при чтении/парсинге.
- */
 export async function getContent(): Promise<AppContent> {
   let fileContent: string;
-
   try {
     fileContent = await fs.readFile(contentFilePath, "utf-8");
-    // console.log(`[getContent] Successfully read ${contentFilePath}`); // Можно раскомментировать для отладки
   } catch (readError: unknown) {
     console.error(
       `[getContent] Error reading content file (${contentFilePath}):`,
       readError
     );
     throw new Error(
-      `Failed to read content file. Reason: ${
+      `Failed to read content file. ${
         readError instanceof Error ? readError.message : String(readError)
       }`
     );
@@ -197,14 +281,13 @@ export async function getContent(): Promise<AppContent> {
   let jsonData: unknown;
   try {
     jsonData = JSON.parse(fileContent);
-    // console.log(`[getContent] Successfully parsed JSON from ${contentFilePath}`); // Можно раскомментировать для отладки
   } catch (parseError: unknown) {
     console.error(
       `[getContent] Error parsing JSON from ${contentFilePath}:`,
       parseError
     );
     throw new Error(
-      `Failed to parse content file as JSON. Reason: ${
+      `Failed to parse content file. ${
         parseError instanceof Error ? parseError.message : String(parseError)
       }`
     );
@@ -215,75 +298,62 @@ export async function getContent(): Promise<AppContent> {
     jsonData === null ||
     Array.isArray(jsonData)
   ) {
-    const errorMsg = `[getContent] Invalid content structure in ${contentFilePath}: Root level is not an object. Found type: ${
-      Array.isArray(jsonData) ? "array" : typeof jsonData
-    }`;
-    console.error(errorMsg);
+    console.error(
+      `[getContent] Invalid content structure in ${contentFilePath}: Root is not an object.`
+    );
     throw new Error("Invalid content structure: Root level must be an object.");
   }
 
-  // --- НАЧАЛО ОБРАБОТКИ КОНТЕНТА ---
-  console.log("[getContent] Starting content processing (image paths)...");
-  await processContentNode(jsonData, ""); // Запускаем рекурсивную обработку
-  console.log("[getContent] Content processing finished.");
-  // --- КОНЕЦ ОБРАБОТКИ КОНТЕНТА ---
-
-  // Теперь jsonData содержит обработанные пути к изображениям
-  // Делаем type assertion, т.к. структура та же, только значения image полей изменены
+  // console.log("[getContent] Starting content processing (image paths with base names)...");
+  await processContentNode(jsonData, "");
+  // console.log("[getContent] Content processing finished.");
   return jsonData as AppContent;
 }
 
-/**
- * Записывает данные в файл content.json.
- * Принимает объект, соответствующий интерфейсу AppContent.
- * ВАЖНО: Перед записью УБИРАЕТ префикс '/api/media/' из путей к изображениям,
- * чтобы в content.json хранились только базовые имена файлов.
- * @param contentToWrite - Объект контента для записи.
- */
 export async function writeContent(contentToWrite: AppContent): Promise<void> {
   try {
-    // Создаем глубокую копию, чтобы не модифицировать оригинальный объект,
-    // который может использоваться где-то еще в рантайме
     const contentCopy = JSON.parse(JSON.stringify(contentToWrite));
 
-    // Рекурсивная функция для очистки путей перед записью
-    const cleanupImagePaths = (node: any): void => {
+    const cleanupImagePathsForWrite = (node: any): void => {
       if (typeof node !== "object" || node === null || Array.isArray(node)) {
         return;
       }
       Object.keys(node).forEach((key) => {
         const value = node[key];
-        if (
-          isImageField(key) &&
-          typeof value === "string" &&
-          value.startsWith("/api/media/")
-        ) {
-          // Убираем префикс, оставляем только имя файла
-          node[key] = value.substring("/api/media/".length);
-          // console.log(`[writeContent] Cleaned image path for ${key}: ${node[key]}`); // Для отладки
+        if (isImageField(key) && typeof value === "string") {
+          if (value.startsWith("/api/media/")) {
+            const fullFilename = value.substring("/api/media/".length);
+            // Сохраняем только базовое имя без расширения
+            node[key] = path.basename(fullFilename, path.extname(fullFilename));
+            // console.log(`[writeContent] Cleaned image path for ${key} to base name: ${node[key]}`);
+          } else if (value.includes(".")) {
+            // Если значение не URL, но содержит точку (т.е. полное имя файла), также извлекаем базовое имя
+            // Это может произойти, если `finalSectionData` в actions.ts передало полное имя
+            // (что не должно происходить по новой логике, но для подстраховки)
+            node[key] = path.basename(value, path.extname(value));
+            // console.log(`[writeContent] Converted full name ${value} to base name for ${key}: ${node[key]}`);
+          }
+          // Если это уже базовое имя (без /api/media/ и без точки), оставляем как есть
         } else if (typeof value === "object" && value !== null) {
-          cleanupImagePaths(value); // Рекурсивный вызов для вложенных объектов
+          cleanupImagePathsForWrite(value);
         }
       });
     };
 
-    console.log("[writeContent] Cleaning image paths before writing...");
-    cleanupImagePaths(contentCopy); // Очищаем пути в копии
-    console.log("[writeContent] Image paths cleaned.");
+    // console.log("[writeContent] Cleaning image paths to base names before writing...");
+    cleanupImagePathsForWrite(contentCopy);
+    // console.log("[writeContent] Image paths cleaned to base names.");
 
-    // Записываем очищенные данные
-    const dataString = JSON.stringify(contentCopy, null, 2); // Отступы в 2 пробела
+    const dataString = JSON.stringify(contentCopy, null, 2);
     await fs.writeFile(contentFilePath, dataString, "utf-8");
-    console.log(
-      `[writeContent] Content file ${contentFilePath} updated successfully with cleaned image paths.`
-    );
+    // console.log(`[writeContent] Content file ${contentFilePath} updated successfully.`);
   } catch (error: unknown) {
     console.error(
       `[writeContent] Error writing content file (${contentFilePath}):`,
       error
     );
     throw new Error(
-      `Failed to update content file. Reason: ${
+      `Failed to update content file. ${
         error instanceof Error ? error.message : String(error)
       }`
     );

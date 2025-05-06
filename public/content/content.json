@@ -3,14 +3,14 @@
     "section1": {
       "title": "Hello World 1!",
       "description1": "Это описание домашней страницы 1!",
-      "image1": "1746466006754-wolf-grey.jpeg",
-      "image2": "1746204817732-wolf-black.jpeg",
-      "image3": "1746204817732-wolf-black.jpeg"
+      "image1": "wolf-grey",
+      "image2": "wolf-grey2",
+      "image3": "wolf-grey3"
     },
     "section2": {
       "title": "Hello World 2!",
       "description1": "Это описание домашней страницы 2!",
-      "image1": "1746466007408-wolf-grey.jpeg"
+      "image1": "wolf-grey"
     }
   },
   "about": {
@@ -19,8 +19,8 @@
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
       "description3": "Информация о нашей компании 3",
-      "image1": "1746466434678-wolf-black.jpeg",
-      "image2": "1746466490680-wolf-grey.jpeg"
+      "image1": "wolf-black",
+      "image2": "wolf-grey"
     }
   }
 }

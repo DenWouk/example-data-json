@@ -4,6 +4,14 @@ import path from "path";
 import { AppContent } from "@/types/types";
 import { isImageField } from "@/lib/content-utils";
 
+type JsonValue = string | number | boolean | null | JsonObject | JsonArray;
+type JsonArray = Array<JsonValue>;
+
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+
 const mediaFolderPath = path.join(process.cwd(), "media");
 const contentFolderPath = path.join(process.cwd(), "public", "content");
 const contentFilePath = path.join(contentFolderPath, "content.json");
@@ -218,7 +226,7 @@ export async function safeRename(
 }
 
 async function processContentNode(
-  node: any,
+  node: JsonObject,
   currentPath: string
 ): Promise<void> {
   if (typeof node !== "object" || node === null || Array.isArray(node)) {
@@ -256,7 +264,7 @@ async function processContentNode(
         }
       }
     } else if (typeof value === "object" && value !== null) {
-      await processContentNode(value, fullPathKey);
+      await processContentNode(value as JsonObject, fullPathKey);
     }
   });
   await Promise.all(promises);
@@ -279,6 +287,7 @@ export async function getContent(): Promise<AppContent> {
   }
 
   let jsonData: unknown;
+
   try {
     jsonData = JSON.parse(fileContent);
   } catch (parseError: unknown) {
@@ -305,16 +314,16 @@ export async function getContent(): Promise<AppContent> {
   }
 
   // console.log("[getContent] Starting content processing (image paths with base names)...");
-  await processContentNode(jsonData, "");
+  await processContentNode(jsonData as JsonObject, "");
   // console.log("[getContent] Content processing finished.");
   return jsonData as AppContent;
 }
 
 export async function writeContent(contentToWrite: AppContent): Promise<void> {
   try {
-    const contentCopy = JSON.parse(JSON.stringify(contentToWrite));
+    const contentCopy: JsonObject = JSON.parse(JSON.stringify(contentToWrite));
 
-    const cleanupImagePathsForWrite = (node: any): void => {
+    const cleanupImagePathsForWrite = (node: JsonObject): void => {
       if (typeof node !== "object" || node === null || Array.isArray(node)) {
         return;
       }
@@ -335,7 +344,7 @@ export async function writeContent(contentToWrite: AppContent): Promise<void> {
           }
           // Если это уже базовое имя (без /api/media/ и без точки), оставляем как есть
         } else if (typeof value === "object" && value !== null) {
-          cleanupImagePathsForWrite(value);
+          cleanupImagePathsForWrite(value as JsonObject);
         }
       });
     };

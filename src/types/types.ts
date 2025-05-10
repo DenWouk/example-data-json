@@ -51,6 +51,7 @@ export interface AppContent {
       "title": string;
       "description1": string;
       "image1": string;
+      "image2": string;
     };
   };
   "about": {

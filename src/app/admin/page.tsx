@@ -350,6 +350,9 @@ export default function AdminPage() {
       });
       clearedFileUploads.forEach((uploadKey) => {
         /* ... Сброс инпутов ... */
+        if (fileInputRefs.current[uploadKey]) {
+          fileInputRefs.current[uploadKey]!.value = "";
+        }
       });
     }
 

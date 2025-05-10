@@ -10,40 +10,41 @@ import {
   SectionKeyForPage,
   SectionDataType,
 } from "@/types/types";
-import { generateLabel, isImageField, normalizeSectionData } from "@/lib/content-utils";
+import {
+  isImageField,
+  normalizeSectionData,
+  generateLabel, 
+} from "@/lib/content-utils";
 import {
   getContent,
   writeContent,
   safeUnlink,
   getSafeMediaFilePath,
   safeRename,
-  checkMediaFileExists,
   findActualFilenameInMedia,
 } from "@/lib/fs-utils";
 
 const mediaBaseFolderPath = path.join(process.cwd(), "media");
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = [
-  "image/jpeg",
+  "image/jpeg", // Покрывает .jpeg и .jpg
   "image/png",
   "image/webp",
   "image/gif",
   "image/svg+xml",
 ];
 
-interface FileOperation {
+// Типы для операций отката
+interface FileOperationRename {
   type: "rename";
   fromPath: string; // Полный путь к файлу, который был переименован (например, prev-имя.ext)
-  toPath: string; // Полный путь, куда он был переименован (например, имя.ext)
-  originalFromPath?: string; // Изначальное имя файла до того, как он стал prev- (для отката rename prev- back to original)
+  toPath: string; // Полный путь, куда он должен быть переименован обратно (например, имя.ext)
 }
-
-interface DeleteOperation {
+interface FileOperationDelete {
   type: "delete";
   filePath: string; // Полный путь к файлу, который был создан и должен быть удален при откате
 }
-
-type RollbackOperation = FileOperation | DeleteOperation;
+type RollbackOperation = FileOperationRename | FileOperationDelete;
 
 export async function getAdminContent(): Promise<AppContent> {
   return await getContent();
@@ -51,7 +52,7 @@ export async function getAdminContent(): Promise<AppContent> {
 
 export async function updateSectionContent<P extends PageKey>(
   pageKey: P,
-  sectionKey: SectionKeyForPage<P>,
+  sectionKey: SectionKeyForPage<P>, // sectionKey теперь строго типизирован для данной страницы P
   formData: FormData
 ): Promise<{
   success: boolean;
@@ -75,13 +76,11 @@ export async function updateSectionContent<P extends PageKey>(
     return { success: false, message: `Error parsing section data: ${em}` };
   }
 
-  // `finalSectionData` будет аккумулировать все изменения в полях секции (текст и базовые имена изображений)
-  // и в итоге будет использован для обновления AppContent и возвращен клиенту.
-  let finalSectionData: SectionDataType = { ...sectionDataFromClient };
+  const finalSectionData: SectionDataType = { ...sectionDataFromClient };
   const rollbackOps: RollbackOperation[] = [];
 
   try {
-    const currentContent = await getContent(); // Содержит URL-ы вида /api/media/имя.ext
+    const currentContent = await getContent();
     const currentSectionFromServer = currentContent[pageKey]?.[sectionKey];
 
     // --- 1. Обработка ЗАГРУЖЕННЫХ файлов ---
@@ -97,11 +96,10 @@ export async function updateSectionContent<P extends PageKey>(
 
     for (let i = 0; i < uploadedImageFiles.length; i++) {
       const imageFile = uploadedImageFiles[i];
-      const imageFieldKey = uploadedImageFieldKeys[i]; // Ключ поля, например, "image1"
+      const imageFieldKey = uploadedImageFieldKeys[i];
 
       // console.log(`[Action Process Upload] Field: ${imageFieldKey}, File: ${imageFile.name}`);
 
-      // Валидация файла
       if (imageFile.size > MAX_FILE_SIZE) {
         throw new Error(
           `File for '${generateLabel(imageFieldKey)}' too large.`
@@ -122,9 +120,8 @@ export async function updateSectionContent<P extends PageKey>(
 
       let targetBaseFilenameForContentJson: string;
       let targetFullFilenameForDisk: string;
-
-      // Определяем, было ли старое изображение для этого imageFieldKey
       let originalOldFileBaseNameFromContent: string | null = null;
+
       if (
         currentSectionFromServer?.[
           imageFieldKey as keyof typeof currentSectionFromServer
@@ -140,36 +137,29 @@ export async function updateSectionContent<P extends PageKey>(
             path.extname(fullFn)
           );
         } else if (imgPath) {
-          // Если там не URL, а просто имя (хотя getContent должен давать URL)
           originalOldFileBaseNameFromContent = path.basename(
             imgPath,
             path.extname(imgPath)
           );
         }
       }
-      // console.log(`[Action Process Upload] Field ${imageFieldKey}, old base name from content: ${originalOldFileBaseNameFromContent}`);
 
       const actualOldFullFilename = originalOldFileBaseNameFromContent
         ? await findActualFilenameInMedia(originalOldFileBaseNameFromContent)
         : null;
 
       if (originalOldFileBaseNameFromContent && actualOldFullFilename) {
-        // ЗАМЕНА существующего
         targetBaseFilenameForContentJson = originalOldFileBaseNameFromContent;
         targetFullFilenameForDisk = `${targetBaseFilenameForContentJson}${uploadedFileExtension}`;
         const oldFileOriginalExt = path.extname(actualOldFullFilename);
         const prevTargetNameForOldFile = `prev-${originalOldFileBaseNameFromContent}${oldFileOriginalExt}`;
 
-        // Удаляем все предыдущие "prev-${originalOldFileBaseNameFromContent}.*"
         const filesInMedia = await fs.readdir(mediaBaseFolderPath);
         for (const fn of filesInMedia) {
           if (fn.startsWith(`prev-${originalOldFileBaseNameFromContent}.`)) {
-            // console.log(`[Action Pre-delete prev] ${fn}`);
-            const fullPathToDel = getSafeMediaFilePath(fn); // Нужно для safeUnlink, если он не ищет по базовому
-            await safeUnlink(fn); // safeUnlink теперь ищет реальный файл по базовому имени, если нужно
+            await safeUnlink(fn);
           }
         }
-        // console.log(`[Action Rename Old] ${actualOldFullFilename} -> ${prevTargetNameForOldFile}`);
         await safeRename(actualOldFullFilename, prevTargetNameForOldFile);
         rollbackOps.push({
           type: "rename",
@@ -177,8 +167,7 @@ export async function updateSectionContent<P extends PageKey>(
           toPath: getSafeMediaFilePath(actualOldFullFilename),
         });
       } else {
-        // ДОБАВЛЕНИЕ нового
-        targetBaseFilenameForContentJson = `${Date.now()}-${uploadedFileSanitizedBase}-${i}`; // Добавляем индекс для уникальности
+        targetBaseFilenameForContentJson = `${Date.now()}-${uploadedFileSanitizedBase}-${i}`;
         targetFullFilenameForDisk = `${targetBaseFilenameForContentJson}${uploadedFileExtension}`;
         if (originalOldFileBaseNameFromContent && !actualOldFullFilename) {
           console.warn(
@@ -191,20 +180,16 @@ export async function updateSectionContent<P extends PageKey>(
       await fs.mkdir(mediaBaseFolderPath, { recursive: true });
       const bytes = await imageFile.arrayBuffer();
       await fs.writeFile(newFileSavePath, Buffer.from(bytes));
-      // console.log(`[Action Save New] Saved ${imageFieldKey} as: ${targetFullFilenameForDisk}`);
       rollbackOps.push({ type: "delete", filePath: newFileSavePath });
-
       finalSectionData[imageFieldKey] = targetBaseFilenameForContentJson;
-    } // End for loop (uploadedImageFiles)
+    }
 
     // --- 2. Обработка ОЧИЩЕННЫХ полей изображений ---
-    // (тех, для которых не было загрузки нового файла, но в sectionDataFromClient они пустые)
     const allFieldKeysInSection = Object.keys(currentSectionFromServer || {});
     for (const fieldKey of allFieldKeysInSection) {
       if (isImageField(fieldKey) && finalSectionData[fieldKey] === "") {
-        // Поле было очищено клиентом. Проверяем, не было ли для него загрузки (выше).
         const wasUploadedInThisRun = uploadedImageFieldKeys.includes(fieldKey);
-        if (wasUploadedInThisRun) continue; // Уже обработано как загрузка (которая может быть поверх очистки)
+        if (wasUploadedInThisRun) continue;
 
         let originalOldFileBaseNameFromContent: string | null = null;
         if (
@@ -234,22 +219,18 @@ export async function updateSectionContent<P extends PageKey>(
             originalOldFileBaseNameFromContent
           );
           if (actualOldFullFilenameToClear) {
-            // console.log(`[Action Process Clear] Field: ${fieldKey}, Old file: ${actualOldFullFilenameToClear}`);
             const oldFileOriginalExt = path.extname(
               actualOldFullFilenameToClear
             );
             const prevTargetNameForClearedFile = `prev-${originalOldFileBaseNameFromContent}${oldFileOriginalExt}`;
-
             const filesInMedia = await fs.readdir(mediaBaseFolderPath);
             for (const fn of filesInMedia) {
               if (
                 fn.startsWith(`prev-${originalOldFileBaseNameFromContent}.`)
               ) {
-                // console.log(`[Action Pre-delete prev for clear] ${fn}`);
                 await safeUnlink(fn);
               }
             }
-            // console.log(`[Action Rename Cleared] ${actualOldFullFilenameToClear} -> ${prevTargetNameForClearedFile}`);
             await safeRename(
               actualOldFullFilenameToClear,
               prevTargetNameForClearedFile
@@ -261,29 +242,35 @@ export async function updateSectionContent<P extends PageKey>(
             });
           }
         }
-        // finalSectionData[fieldKey] уже "" из sectionDataFromClient
       }
-    } // End for loop (allFieldKeysInSection for clears)
+    }
 
     // --- 3. Обновление content.json ---
-    // Создаем новый объект контента на основе currentContent, обновляя только нужную секцию с finalSectionData
     const newAppContent: AppContent = JSON.parse(
       JSON.stringify(currentContent)
-    ); // Глубокая копия
-    if (!newAppContent[pageKey]) newAppContent[pageKey] = {} as any;
-    if (!newAppContent[pageKey][sectionKey])
-      newAppContent[pageKey][sectionKey] = {} as any;
+    );
 
-    // Обновляем поля в конкретной секции
-    // currentContent уже содержит URLы, finalSectionData содержит базовые имена для картинок и тексты
-    // writeContent ожидает, что ему могут прийти как URLы, так и базовые имена, и он сохранит базовые
+    if (!newAppContent[pageKey]) {
+      newAppContent[pageKey] = {} as AppContent[P];
+    }
+    if (!newAppContent[pageKey][sectionKey]) {
+      newAppContent[pageKey][sectionKey] =
+        {} as AppContent[P][SectionKeyForPage<P>];
+    }
+
+    // Обновляем поля в конкретной секции.
+    // `currentContent[pageKey]?.[sectionKey]` содержит URLы или базовые имена (если writeContent уже их очистил, но getContent вернет URLы).
+    // `finalSectionData` содержит базовые имена для измененных картинок и новые текстовые значения.
+    // `writeContent` ожидает, что ему могут прийти как URLы, так и базовые имена, и он сохранит базовые.
     newAppContent[pageKey][sectionKey] = {
-      ...(currentContent[pageKey]?.[sectionKey] || {}), // Берем существующие поля (с URLами)
-      ...finalSectionData, // Перезаписываем измененными (тексты + базовые имена картинок)
-    } as AppContent[P][SectionKeyForPage<P>];
+      ...newAppContent[pageKey][sectionKey], // Берем текущие поля секции (возможно, только что созданные)
+      ...finalSectionData, // Перезаписываем/добавляем измененными значениями
+    };
+    // Тип `newAppContent[pageKey][sectionKey]` теперь AppContent[P][SectionKeyForPage<P>]
+    // А `finalSectionData` это `Record<string, string>`.
+    // Поскольку все поля в AppContent строковые, это присвоение должно быть безопасным.
 
     await writeContent(newAppContent);
-    // console.log(`[Action END] Content updated for ${pageAndSection}`);
 
     revalidatePath(pageKey === "home" ? "/" : `/${pageKey}`);
     revalidatePath("/admin");
@@ -293,44 +280,46 @@ export async function updateSectionContent<P extends PageKey>(
       message: `Section '${generateLabel(
         String(sectionKey)
       )}' on page '${pageKey}' updated successfully.`,
-      updatedSection: finalSectionData, // Это SectionDataType с базовыми именами для картинок
+      updatedSection: finalSectionData,
     };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[Action ERROR] for ${pageAndSection}:`, error);
 
-    // --- Попытка отката файловых операций ---
-    // console.log(`[Action Rollback] ${rollbackOps.length} operations to revert for ${pageAndSection}.`);
     for (let i = rollbackOps.length - 1; i >= 0; i--) {
       const op = rollbackOps[i];
       try {
         if (op.type === "delete") {
-          // console.log(`[Action Rollback] Deleting ${op.filePath}`);
           await fs
             .unlink(op.filePath)
             .catch((e) =>
-              console.error(`Rollback unlink failed: ${e.message}`)
+              console.error(
+                `Rollback unlink failed for ${op.filePath}: ${e.message}`
+              )
             );
         } else if (op.type === "rename") {
-          // console.log(`[Action Rollback] Renaming ${op.fromPath} to ${op.toPath}`);
-          // Убедимся, что целевой путь свободен, особенно если это было имя нового файла, который не удалился
+          // Перед переименованием обратно, убедимся, что целевой путь не занят чем-то неожиданным.
           try {
-            await fs.access(op.toPath); // Проверяем, существует ли целевой файл
-            // Если существует и это не тот файл, который мы только что переименовали в op.fromPath,
-            // то это проблема. Но в простом сценарии отката мы просто пытаемся переименовать.
-            // console.warn(`[Action Rollback] Target path ${op.toPath} for rename exists. Overwriting.`);
+            await fs.access(op.toPath); // Проверяем, существует ли toPath
+            // Если существует, это может быть файл, который должен был быть удален (newFile)
+            // или что-то еще. Для простоты, пытаемся переименовать, fs.rename перезапишет.
+            // console.warn(`[Action Rollback] Target path ${op.toPath} for rename exists. Attempting to overwrite.`);
           } catch {
-            /* Target path does not exist, good */
+            /* toPath не существует, хорошо */
           }
           await fs
             .rename(op.fromPath, op.toPath)
             .catch((e) =>
-              console.error(`Rollback rename failed: ${e.message}`)
+              console.error(
+                `Rollback rename failed for ${op.fromPath} to ${op.toPath}: ${e.message}`
+              )
             );
         }
       } catch (rollbackError: unknown) {
         console.error(
-          `[Action Rollback] Error during op ${op.type}:`,
+          `[Action Rollback] Error during op ${op.type} (${
+            op.type === "delete" ? op.filePath : op.fromPath
+          }):`,
           rollbackError
         );
       }

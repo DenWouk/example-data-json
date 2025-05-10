@@ -1,5 +1,5 @@
 // scripts/generate-types.ts
-const fs = require("fs").promises; // Получаем промисы из fs
+const fs = require("fs").promises; // Используем require для Node.js скрипта
 const path = require("path");
 
 // --- Конфигурация ---
@@ -10,84 +10,100 @@ const contentFilePath = path.join(
   "content.json"
 );
 const typesFilePath = path.join(process.cwd(), "src", "types", "types.ts");
-const generatedInterfaceName = "AppContent"; // Имя генерируемого интерфейса
+const generatedInterfaceName = "AppContent";
 const startMarker = `// --- START OF GENERATED ${generatedInterfaceName} INTERFACE ---`;
 const endMarker = `// --- END OF GENERATED ${generatedInterfaceName} INTERFACE ---`;
 // ---
+
+// Вспомогательные типы для представления JSON-подобных структур
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+interface JsonArray extends Array<JsonValue> {}
 
 /**
  * Проверяет, является ли значение простым типом, который можно представить как строку.
  * Исключает объекты и массивы.
  */
-function isSimpleValue(value: unknown): boolean {
+function isSimpleValue(value: JsonValue): boolean {
+  // Изменили тип value
   const type = typeof value;
   return (
     type === "string" ||
     type === "number" ||
     type === "boolean" ||
-    value === null ||
-    value === undefined
+    value === null // undefined не является валидным JSON значением, но может прийти от кривого парсера
   );
 }
 
 /**
  * Генерирует строку с определением интерфейса TypeScript на основе объекта JSON.
- * @param jsonObject - Объект, прочитанный из content.json.
+ * @param jsonObject - Объект, прочитанный из content.json (ожидается структура AppContent).
  * @returns Строка с кодом интерфейса TypeScript.
  */
-function buildInterfaceString(jsonObject: Record<string, any>): string {
+function buildInterfaceString(jsonObject: JsonObject): string {
+  // Изменили тип jsonObject
   let interfaceString = `/**\n * ВНИМАНИЕ: Этот интерфейс генерируется автоматически скриптом generate-types.ts\n * Он отражает ТОЧНУЮ структуру вашего файла public/content/content.json.\n * ВСЕ поля считаются обязательными строками.\n * Не редактируйте этот интерфейс вручную, он будет перезаписан.\n */\n`;
   interfaceString += `export interface ${generatedInterfaceName} {\n`;
 
-  // Итерация по страницам (home, about, ...)
   for (const pageKey in jsonObject) {
     if (!Object.prototype.hasOwnProperty.call(jsonObject, pageKey)) continue;
     const pageData = jsonObject[pageKey];
-    if (typeof pageData !== "object" || pageData === null) {
+
+    // Проверяем, что pageData является объектом
+    if (
+      typeof pageData !== "object" ||
+      pageData === null ||
+      Array.isArray(pageData)
+    ) {
       console.warn(
         `[generate-types] Warning: Page '${pageKey}' in content.json is not an object. Skipping.`
       );
       continue;
     }
+    // Теперь pageData можно безопасно считать JsonObject
+    const pageDataObject = pageData as JsonObject;
 
-    // Добавляем ключ страницы
-    interfaceString += `  ${JSON.stringify(pageKey)}: {\n`; // JSON.stringify для экранирования ключа, если нужно
+    interfaceString += `  ${JSON.stringify(pageKey)}: {\n`;
 
-    // Итерация по секциям (section1, section2, ...)
-    for (const sectionKey in pageData) {
-      if (!Object.prototype.hasOwnProperty.call(pageData, sectionKey)) continue;
-      const sectionData = pageData[sectionKey];
-      if (typeof sectionData !== "object" || sectionData === null) {
+    for (const sectionKey in pageDataObject) {
+      if (!Object.prototype.hasOwnProperty.call(pageDataObject, sectionKey))
+        continue;
+      const sectionData = pageDataObject[sectionKey];
+
+      if (
+        typeof sectionData !== "object" ||
+        sectionData === null ||
+        Array.isArray(sectionData)
+      ) {
         console.warn(
           `[generate-types] Warning: Section '${pageKey}.${sectionKey}' in content.json is not an object. Skipping.`
         );
         continue;
       }
+      const sectionDataObject = sectionData as JsonObject;
 
-      // Добавляем ключ секции
       interfaceString += `    ${JSON.stringify(sectionKey)}: {\n`;
 
-      // Итерация по полям (title, description1, image1, ...)
-      for (const fieldKey in sectionData) {
-        if (!Object.prototype.hasOwnProperty.call(sectionData, fieldKey))
+      for (const fieldKey in sectionDataObject) {
+        if (!Object.prototype.hasOwnProperty.call(sectionDataObject, fieldKey))
           continue;
-        const fieldValue = sectionData[fieldKey];
+        const fieldValue = sectionDataObject[fieldKey]; // fieldValue теперь типа JsonValue
 
-        // Проверка: Убедимся, что значение поля не объект/массив (как договоренность)
         if (!isSimpleValue(fieldValue)) {
           console.warn(
             `[generate-types] Warning: Field '${pageKey}.${sectionKey}.${fieldKey}' has a complex value (object/array). Assuming 'string' type, but check your content.json.`
           );
         }
-
-        // Добавляем ключ поля с типом string (обязательное поле)
         interfaceString += `      ${JSON.stringify(fieldKey)}: string;\n`;
       }
-      interfaceString += `    };\n`; // Закрываем объект секции
+      interfaceString += `    };\n`;
     }
-    interfaceString += `  };\n`; // Закрываем объект страницы
+    interfaceString += `  };\n`;
   }
-  interfaceString += `}\n`; // Закрываем главный интерфейс
+  interfaceString += `}\n`;
 
   return interfaceString;
 }
@@ -103,67 +119,90 @@ async function generateAndWriteTypes() {
   );
 
   try {
-    // 1. Читаем content.json
     let contentJsonString: string;
     try {
       contentJsonString = await fs.readFile(contentFilePath, "utf-8");
-    } catch (readError: any) {
+    } catch (readError: unknown) {
+      // Типизируем ошибку как unknown
+      const message =
+        readError instanceof Error ? readError.message : String(readError);
       console.error(
-        `[generate-types] Error reading content file at ${contentFilePath}: ${readError.message}`
+        `[generate-types] Error reading content file at ${contentFilePath}: ${message}`
       );
-      process.exit(1); // Выход с ошибкой
+      process.exit(1);
     }
 
-    // 2. Парсим JSON
-    let contentObject: Record<string, any>;
+    let contentObject: JsonObject; // Ожидаем JsonObject после парсинга
     try {
-      contentObject = JSON.parse(contentJsonString);
+      const parsedJson: unknown = JSON.parse(contentJsonString); // Сначала парсим в unknown
       if (
-        typeof contentObject !== "object" ||
-        contentObject === null ||
-        Array.isArray(contentObject)
+        typeof parsedJson !== "object" ||
+        parsedJson === null ||
+        Array.isArray(parsedJson)
       ) {
         throw new Error(
           "Content file does not contain a valid JSON object at the root."
         );
       }
-    } catch (parseError: any) {
+      contentObject = parsedJson as JsonObject; // Приводим к JsonObject после проверки
+    } catch (parseError: unknown) {
+      // Типизируем ошибку как unknown
+      const message =
+        parseError instanceof Error ? parseError.message : String(parseError);
       console.error(
-        `[generate-types] Error parsing JSON from ${contentFilePath}: ${parseError.message}`
+        `[generate-types] Error parsing JSON from ${contentFilePath}: ${message}`
       );
-      process.exit(1); // Выход с ошибкой
+      process.exit(1);
     }
 
-    // 3. Строим строку нового интерфейса
     const newInterfaceContent = buildInterfaceString(contentObject);
 
-    // 4. Читаем существующий файл types.ts
     let existingTypesContent = "";
     try {
       existingTypesContent = await fs.readFile(typesFilePath, "utf-8");
-    } catch (readTypesError: any) {
-      if (readTypesError.code !== "ENOENT") {
-        // Игнорируем, если файла просто нет
+    } catch (readTypesError: unknown) {
+      // Типизируем ошибку как unknown
+      // Проверяем код ошибки, если это объект ошибки Node.js
+      if (
+        readTypesError &&
+        typeof readTypesError === "object" &&
+        "code" in readTypesError &&
+        (readTypesError as { code: string }).code !== "ENOENT"
+      ) {
+        const message =
+          readTypesError instanceof Error
+            ? readTypesError.message
+            : String(readTypesError);
         console.error(
-          `[generate-types] Error reading types file at ${typesFilePath}: ${readTypesError.message}`
+          `[generate-types] Error reading types file at ${typesFilePath}: ${message}`
         );
         process.exit(1);
       }
-      console.log(
-        `[generate-types] Types file ${typesFilePath} not found. Creating a new one.`
-      );
+      // Если ENOENT или ошибка не объектного типа (маловероятно для fs.readFile)
+      if (
+        !(
+          readTypesError &&
+          typeof readTypesError === "object" &&
+          "code" in readTypesError &&
+          (readTypesError as { code: string }).code === "ENOENT"
+        )
+      ) {
+        console.log(
+          `[generate-types] Types file ${typesFilePath} not found or unreadable. Creating a new one.`
+        );
+      } else {
+        console.log(
+          `[generate-types] Types file ${typesFilePath} not found. Creating a new one.`
+        );
+      }
     }
 
-    // 5. Ищем маркеры и обновляем или добавляем контент
     const startIndex = existingTypesContent.indexOf(startMarker);
     const endIndex = existingTypesContent.indexOf(endMarker);
-
     let finalTypesContent: string;
-
     const wrappedNewContent = `${startMarker}\n${newInterfaceContent}${endMarker}`;
 
     if (startIndex !== -1 && endIndex !== -1 && startIndex < endIndex) {
-      // Маркеры найдены, заменяем содержимое между ними
       console.log(
         `[generate-types] Found existing generated interface. Replacing...`
       );
@@ -171,35 +210,33 @@ async function generateAndWriteTypes() {
       const after = existingTypesContent.substring(endIndex + endMarker.length);
       finalTypesContent = `${before}${wrappedNewContent}${after}`;
     } else {
-      // Маркеры не найдены или некорректны, добавляем в конец
       console.log(
         `[generate-types] No existing generated interface found or markers invalid. Appending...`
       );
-      // Добавляем пару пустых строк перед новым блоком для разделения
       finalTypesContent =
         existingTypesContent.trim() + `\n\n${wrappedNewContent}\n`;
     }
 
-    // 6. Записываем обновленный файл types.ts
     try {
       await fs.writeFile(typesFilePath, finalTypesContent, "utf-8");
       console.log(
         `[generate-types] Successfully updated ${typesFilePath} with interface ${generatedInterfaceName}.`
       );
-    } catch (writeError: any) {
+    } catch (writeError: unknown) {
+      // Типизируем ошибку как unknown
+      const message =
+        writeError instanceof Error ? writeError.message : String(writeError);
       console.error(
-        `[generate-types] Error writing updated types file to ${typesFilePath}: ${writeError.message}`
+        `[generate-types] Error writing updated types file to ${typesFilePath}: ${message}`
       );
       process.exit(1);
     }
-  } catch (error: any) {
-    // Общая обработка непредвиденных ошибок
-    console.error(
-      `[generate-types] An unexpected error occurred: ${error.message}`
-    );
+  } catch (error: unknown) {
+    // Типизируем ошибку как unknown
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[generate-types] An unexpected error occurred: ${message}`);
     process.exit(1);
   }
 }
 
-// Запускаем генерацию
 generateAndWriteTypes();

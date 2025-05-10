@@ -1,6 +1,5 @@
 // src/lib/content-utils.ts
-// Убираем импорт AppContent, SectionContent
-import { SectionDataType } from "@/types/types"; // Используем новый тип
+import { SectionDataType } from "@/types/types";
 
 /**
  * Нормализует объект секции (Record<string, any>) до Record<string, string>.

@@ -1,7 +1,7 @@
 //src/app/(home)/page.tsx
 
-import { getContent } from "@/lib/fs-utils";
 import Image from "next/image";
+import { getContent } from "@/lib/fs-utils";
 
 export default async function HomePage() {
   const content = await getContent();
@@ -47,6 +47,7 @@ export default async function HomePage() {
 
       <h2>{section2.title}</h2>
       <p>{section2.description1}</p>
+
       <div style={{ display: "flex", flexWrap: "wrap" }}>
         {section2.image1 && (
           <Image

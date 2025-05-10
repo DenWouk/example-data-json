@@ -10,16 +10,17 @@
     "section2": {
       "title": "Hello World 2!",
       "description1": "Это описание домашней страницы 2!",
-      "image1": "wolf-grey"
+      "image1": "wolf-black",
+      "image2": "wolf-black"
     }
   },
   "about": {
     "section1": {
-      "title": "О нас!",
+      "title": "О нас!!",
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
       "description3": "Информация о нашей компании 3",
-      "image1": "wolf-black",
+      "image1": "wolf-grey",
       "image2": "wolf-grey"
     }
   }

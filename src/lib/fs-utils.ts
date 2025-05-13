@@ -11,7 +11,6 @@ interface JsonObject {
   [key: string]: JsonValue;
 }
 
-
 const mediaFolderPath = path.join(process.cwd(), "media");
 const contentFolderPath = path.join(process.cwd(), "public", "content");
 const contentFilePath = path.join(contentFolderPath, "content.json");
@@ -32,6 +31,59 @@ const SUPPORTED_IMAGE_EXTENSIONS = [
  * @param baseFilename - Базовое имя файла (без расширения).
  * @returns Полное имя файла с расширением или null, если не найден.
  */
+
+export async function findNextAvailableVersionedFilename(
+  baseFilename: string,
+  newExtension: string
+): Promise<{
+  nextVersionedBaseName: string;
+  nextVersionedFullName: string;
+} | null> {
+  if (!baseFilename || !newExtension) {
+    console.error(
+      "[findNextAvailableVersionedFilename] Missing baseFilename or newExtension"
+    );
+    return null;
+  }
+
+  const versionRegex = new RegExp(
+    `^${escapeRegex(baseFilename)}_v(\\d+)(\\.\\w+)$`
+  );
+  let maxVersion = 0;
+
+  try {
+    await fs.mkdir(mediaFolderPath, { recursive: true }); // Ensure media folder exists
+    const files = await fs.readdir(mediaFolderPath);
+
+    for (const file of files) {
+      const match = file.match(versionRegex);
+      if (match) {
+        const versionNumber = parseInt(match[1], 10);
+        if (!isNaN(versionNumber) && versionNumber > maxVersion) {
+          maxVersion = versionNumber;
+        }
+      }
+    }
+  } catch (error) {
+    console.error(
+      "[findNextAvailableVersionedFilename] Error reading media directory:",
+      error
+    );
+    return null; // Indicate an error occurred
+  }
+
+  const nextVersion = maxVersion + 1;
+  const nextVersionedBaseName = `${baseFilename}_v${nextVersion}`;
+  const nextVersionedFullName = `${nextVersionedBaseName}${newExtension}`;
+
+  return { nextVersionedBaseName, nextVersionedFullName };
+}
+
+// Helper to escape characters for regex
+function escapeRegex(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // $& means the whole matched string
+}
+
 export async function findActualFilenameInMedia(
   baseFilename: string
 ): Promise<string | null> {

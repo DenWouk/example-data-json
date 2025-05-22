@@ -28,7 +28,6 @@ export function normalizeSectionData(section: unknown): SectionDataType {
   return normalized;
 }
 
-
 /**
  * Проверяет, является ли ключ поля ключом для изображения.
  */
@@ -37,11 +36,22 @@ export function isImageField(key: string): boolean {
   return key.toLowerCase().includes("image");
 }
 
+export function isColorField(key: string): boolean {
+  return key.toLowerCase().includes("color");
+}
+
 /**
  * Определяет тип HTML-элемента для рендеринга поля формы.
+ * Добавлена проверка для полей цвета.
  */
-export function inferInputElement(key: string): "file" | "textarea" {
-  return isImageField(key) ? "file" : "textarea";
+export function inferInputElement(key: string): "file" | "textarea" | "color" {
+  if (isImageField(key)) {
+    return "file";
+  }
+  if (isColorField(key)) {
+    return "color";
+  }
+  return "textarea";
 }
 
 /**

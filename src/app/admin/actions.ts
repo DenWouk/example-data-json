@@ -244,7 +244,9 @@ export async function updateSectionContent<
     await writeContent(newAppContent); // Записываем финальный результат
 
     // 7. Ревалидация
-    revalidatePath(pageKey === "home" ? "/" : `/${pageKey}`);
+    revalidatePath(
+      pageKey === "home" || pageKey === "styles" ? "/" : `/${pageKey}`
+    );
     revalidatePath("/admin");
 
     // Готовим данные для ответа клиенту: берем финальное состояние секции из newAppContent
@@ -332,3 +334,42 @@ function syncImageBaseNameAcrossContent(
   }
 }
 
+export async function getMediaFilesList(): Promise<string[]> {
+  const mediaFolderPathForList = path.join(process.cwd(), "media");
+  try {
+    const files = await fs.readdir(mediaFolderPathForList);
+    const imageFilesPromises = files.map(async (file) => {
+      const filePath = path.join(mediaFolderPathForList, file);
+      try {
+        const stats = await fs.stat(filePath);
+        if (stats.isFile()) {
+          const ext = path.extname(file).toLowerCase();
+          if (
+            [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"].includes(ext)
+          ) {
+            return file; // Возвращаем имя файла, если это подходящий файл
+          }
+        }
+      } catch (statError) {
+        // Ошибка получения статов (например, битая ссылка), пропускаем файл
+        console.warn(
+          `[getMediaFilesList] Error stating file ${filePath}:`,
+          statError
+        );
+        return null;
+      }
+      return null; // Не подходящий файл или папка
+    });
+
+    const resolvedImageFiles = await Promise.all(imageFilesPromises);
+    // Фильтруем null значения (которые были папками, не-изображениями или ошибками)
+    const filteredImageFiles = resolvedImageFiles.filter(
+      (file): file is string => file !== null
+    );
+
+    return filteredImageFiles.sort(); // Сортируем для удобства
+  } catch (error) {
+    console.error("[getMediaFilesList] Error reading media directory:", error);
+    return [];
+  }
+}

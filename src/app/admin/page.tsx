@@ -23,8 +23,8 @@ import {
 import { getAdminContent, updateSectionContent } from "./actions";
 import {
   generateLabel,
-  isImageField,
-  inferInputElement,
+  isImageField, // Эта функция остается для справки
+  inferInputElement, // ПРЕДПОЛАГАЕМ, ЧТО ЭТА ФУНКЦИЯ ОБНОВЛЕНА И МОЖЕТ ВОЗВРАЩАТЬ "color"
 } from "@/lib/content-utils";
 
 // Тип для данных РЕДАКТИРУЕМОЙ СТРАНИЦЫ (ключ секции -> данные секции)
@@ -216,7 +216,7 @@ export default function AdminPage() {
   };
 
   // Обработчик очистки файла
-  const handleClearImage = (sectionKey: string, fieldKey: string) => {
+  const handleClearInput = (sectionKey: string, fieldKey: string) => {
     handleFormChange(sectionKey, fieldKey, "");
   };
 
@@ -436,13 +436,13 @@ export default function AdminPage() {
                         fieldKeys.map((fieldKey) => {
                           const value = sectionFormData[fieldKey];
                           const label = generateLabel(fieldKey);
-                          const inputType = inferInputElement(fieldKey);
+                          const inputType = inferInputElement(fieldKey); // ИСПОЛЬЗУЕМ ОБНОВЛЕННУЮ inferInputElement
                           const elementKey = `${selectedPageKey}-${sectionKey}-${fieldKey}`;
                           const previewKey = `${sectionKey}-${fieldKey}`;
                           const localPreview =
                             imagePreviews[sectionKey]?.[fieldKey];
                           const existingImageUrl =
-                            isImageField(fieldKey) && value && !localPreview
+                            isImageField(fieldKey) && value && !localPreview // isImageField все еще нужна здесь для логики URL
                               ? value
                               : null;
 
@@ -487,7 +487,46 @@ export default function AdminPage() {
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      handleClearImage(sectionKey, fieldKey)
+                                      handleClearInput(sectionKey, fieldKey)
+                                    }
+                                    disabled={isSaving}
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          } else if (inputType === "color") {
+                            return (
+                              <div key={elementKey} className="form-field">
+                                <label htmlFor={elementKey}>{label}:</label>
+                                <input
+                                  type="color"
+                                  id={elementKey}
+                                  name={elementKey}
+                                  value={value}
+                                  onChange={(e) =>
+                                    handleFormChange(
+                                      // Используем тот же обработчик
+                                      sectionKey,
+                                      fieldKey,
+                                      e.target.value
+                                    )
+                                  }
+                                  disabled={isSaving}
+                                  // Можно добавить немного базовых стилей для input type="color"
+                                  style={{
+                                    padding: 0,
+                                    height: "30px",
+                                    width: "50px",
+                                    border: "1px solid #ccc",
+                                  }}
+                                />
+                                {value && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleClearInput(sectionKey, fieldKey)
                                     }
                                     disabled={isSaving}
                                   >
@@ -497,6 +536,7 @@ export default function AdminPage() {
                               </div>
                             );
                           } else {
+                            // textarea - это исходный fallback
                             return (
                               <div key={elementKey} className="form-field">
                                 <label htmlFor={elementKey}>{label}:</label>
@@ -517,6 +557,9 @@ export default function AdminPage() {
                               </div>
                             );
                           }
+                          // =========================================================
+                          // === КОНЕЦ ЕДИНСТВЕННОГО БЛОКА ИЗМЕНЕНИЙ ДЛЯ COLOR INPUT ===
+                          // =========================================================
                         }) // Конец fieldKeys.map
                       ) : (
                         <p>No fields data for this section.</p>
@@ -543,14 +586,6 @@ export default function AdminPage() {
       {!selectedPageKey && pageKeys.length > 0 && !isLoading && (
         <p className="placeholder-message">Select a page to start editing.</p>
       )}
-
-      {/* Стили */}
-      <style jsx global>{`
-        /* ... */
-      `}</style>
-      <style jsx>{`
-        /* ... */
-      `}</style>
     </div>
   );
 }

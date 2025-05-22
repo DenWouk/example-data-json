@@ -1,10 +1,20 @@
 {
+  "styles": {
+    "section1": {
+      "color1": "",
+      "backgroundColor1": "#fbfbfb"
+    },
+    "section2": {
+      "color2": "#737373",
+      "backgroundColor2": "#fbfbfbce"
+    }
+  },
   "home": {
     "section1": {
-      "title": "Hello World 1!",
+      "title": "Hello World 1!!!",
       "description1": "Это описание домашней страницы 1!",
-      "image1": "wolf-grey1",
-      "image2": "wolf-grey1",
+      "image1": "wolf-grey1_v1",
+      "image2": "wolf-grey1_v1",
       "image3": "wolf-grey3"
     },
     "section2": {
@@ -20,8 +30,8 @@
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
       "description3": "Информация о нашей компании 3",
-      "image1": "wolf-grey1",
-      "image2": "wolf-grey1"
+      "image1": "wolf-grey1_v1",
+      "image2": "wolf-grey1_v1"
     }
   }
 }

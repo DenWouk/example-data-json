@@ -39,6 +39,16 @@ export type SectionDataType = Record<string, string>;
  * Не редактируйте этот интерфейс вручную, он будет перезаписан.
  */
 export interface AppContent {
+  "styles": {
+    "section1": {
+      "color1": string;
+      "backgroundColor1": string;
+    };
+    "section2": {
+      "color2": string;
+      "backgroundColor2": string;
+    };
+  };
   "home": {
     "section1": {
       "title": string;

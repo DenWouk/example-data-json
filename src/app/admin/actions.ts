@@ -7,9 +7,9 @@ import { revalidatePath } from "next/cache";
 import {
   AppContent,
   PageKey,
-  SectionKeyForPage,
-  SectionDataType,
-  FieldKeyForSection,
+  SectionKeyForPage, // Если вы переименовали в ContentItemKeyForPage, используйте новое имя
+  SectionDataType, // Если вы переименовали в ContentItemDataType, используйте новое имя
+  FieldKeyForSection, // Если вы переименовали в FieldKeyForContentItem, используйте новое имя
 } from "@/types/types";
 import {
   isImageField,
@@ -19,7 +19,7 @@ import {
 import {
   getContent,
   writeContent,
-  safeUnlink,
+  safeUnlink, // Не используется в updateSectionContent, но может быть полезен в других actions
   getSafeMediaFilePath,
   findNextAvailableVersionedFilename,
 } from "@/lib/fs-utils";
@@ -54,15 +54,15 @@ export async function getAdminContent(): Promise<AppContent> {
 
 export async function updateSectionContent<
   P extends PageKey,
-  S extends SectionKeyForPage<P>
+  S extends SectionKeyForPage<P> // Используйте актуальное имя типа
 >(
   pageKey: P,
-  sectionKey: S,
+  sectionKey: S, // Имя параметра можно оставить, оно будет ссылаться на ваш элемент контента
   formData: FormData
 ): Promise<{
   success: boolean;
   message: string;
-  updatedSection?: SectionDataType; // Для ответа клиенту
+  updatedSection?: SectionDataType; // Используйте актуальное имя типа
 }> {
   const pageAndSection = `${pageKey}/${String(sectionKey)}`;
 
@@ -70,7 +70,7 @@ export async function updateSectionContent<
   if (!sectionDataJson)
     return { success: false, message: "Error: Missing section data." };
 
-  let sectionDataFromForm: SectionDataType; // Данные из формы (текст, старые/очищенные имена img)
+  let sectionDataFromForm: SectionDataType; // Используйте актуальное имя типа
   try {
     sectionDataFromForm = normalizeSectionData(JSON.parse(sectionDataJson));
   } catch (e: unknown) {
@@ -86,8 +86,8 @@ export async function updateSectionContent<
   }
 
   const rollbackOps: RollbackOperation[] = [];
-  const syncNamePairs: Array<[string, string]> = []; // Пары [старое_имя, новое_имя]
-  const uploadedImageFieldKeys = formData.getAll("imageFieldKey") as string[]; // Ключи загруженных
+  const syncNamePairs: Array<[string, string]> = [];
+  const uploadedImageFieldKeys = formData.getAll("imageFieldKey") as string[];
 
   try {
     // 1. Получаем контент, копия, очистка имен
@@ -95,7 +95,7 @@ export async function updateSectionContent<
     const newAppContent: AppContent = JSON.parse(
       JSON.stringify(currentContent)
     );
-    cleanupPathsToBaseNames(newAppContent); // newAppContent с базовыми именами
+    cleanupPathsToBaseNames(newAppContent);
 
     // 2. Цикл по ЗАГРУЖЕННЫМ файлам: готовим данные для синхронизации и сохраняем файлы
     const uploadedImageFiles = formData.getAll("imageFile") as File[];
@@ -106,18 +106,41 @@ export async function updateSectionContent<
       };
     }
 
+    const newImageAssignments: Record<string, string> = {};
+
     for (let i = 0; i < uploadedImageFiles.length; i++) {
       const imageFile = uploadedImageFiles[i];
-      const imageFieldKey = uploadedImageFieldKeys[i];
+      // Приводим тип ключа для большей безопасности
+      const imageFieldKey = uploadedImageFieldKeys[i] as FieldKeyForSection<
+        P,
+        S
+      >;
+
+      if (!imageFile || !imageFieldKey) {
+        console.warn(
+          "[Action Update] Missing imageFile or imageFieldKey in uploaded files loop, skipping entry."
+        );
+        continue;
+      }
+
+      if (imageFile.size === 0) {
+        // Пропускаем "пустые" файлы, если они как-то попали
+        console.warn(
+          `[Action Update] Empty file provided for field '${String(
+            imageFieldKey
+          )}', skipping.`
+        );
+        continue;
+      }
 
       // --- Валидация ---
       if (imageFile.size > MAX_FILE_SIZE)
         throw new Error(
-          `File for '${generateLabel(imageFieldKey)}' too large.`
+          `File for '${generateLabel(String(imageFieldKey))}' too large.`
         );
       if (!ALLOWED_FILE_TYPES.includes(imageFile.type))
         throw new Error(
-          `Invalid file type for '${generateLabel(imageFieldKey)}'.`
+          `Invalid file type for '${generateLabel(String(imageFieldKey))}'.`
         );
 
       // --- Определение имен ---
@@ -132,21 +155,34 @@ export async function updateSectionContent<
       let targetFullFilenameForDisk: string;
       let originalOldFileBaseNameFromContent: string | null = null;
 
-      // Получаем старое базовое имя из ОЧИЩЕННОГО newAppContent
       const currentSectionInCleanedContent =
         newAppContent[pageKey]?.[sectionKey];
-      const currentBaseNameValue =
-        currentSectionInCleanedContent?.[
-          imageFieldKey as FieldKeyForSection<P, S>
-        ];
+
+      // Убедимся, что currentSectionInCleanedContent существует и imageFieldKey является его ключом
       if (
-        typeof currentBaseNameValue === "string" &&
-        currentBaseNameValue.length > 0
+        currentSectionInCleanedContent &&
+        Object.prototype.hasOwnProperty.call(
+          currentSectionInCleanedContent,
+          imageFieldKey
+        )
       ) {
-        originalOldFileBaseNameFromContent = currentBaseNameValue;
+        const currentBaseNameValue =
+          currentSectionInCleanedContent[imageFieldKey];
+        if (
+          typeof currentBaseNameValue === "string" &&
+          currentBaseNameValue.length > 0
+        ) {
+          originalOldFileBaseNameFromContent = currentBaseNameValue;
+        }
+      } else {
+        console.warn(
+          `[Action Update] Section or field ${pageKey}/${String(
+            sectionKey
+          )}/${String(imageFieldKey)} not found in cleaned content.`
+        );
       }
 
-      // --- Логика версионирования ---
+      // --- Логика версионирования или добавления ---
       if (originalOldFileBaseNameFromContent) {
         // Замена
         const rootBaseName = originalOldFileBaseNameFromContent.replace(
@@ -175,9 +211,11 @@ export async function updateSectionContent<
           ]);
         }
       } else {
-        // Добавление
+        // Добавление нового файла
         targetBaseFilenameForContentJson = `${Date.now()}-${uploadedFileSanitizedBase}`;
         targetFullFilenameForDisk = `${targetBaseFilenameForContentJson}${uploadedFileExtension}`;
+        newImageAssignments[String(imageFieldKey)] =
+          targetBaseFilenameForContentJson;
       }
 
       // --- Сохраняем НОВЫЙ файл ---
@@ -188,8 +226,28 @@ export async function updateSectionContent<
       rollbackOps.push({ type: "delete", filePath: newFileSavePath });
     } // Конец цикла по загруженным файлам
 
+    // Применяем новые имена изображений к newAppContent
+    const targetSectionForAssignments = newAppContent[pageKey]?.[sectionKey];
+    if (targetSectionForAssignments) {
+      for (const fieldKeyString in newImageAssignments) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            newImageAssignments,
+            fieldKeyString
+          )
+        ) {
+          // Убедимся, что fieldKeyString является валидным ключом для SectionDataType
+          const fieldKey = fieldKeyString as keyof SectionDataType;
+          console.log(
+            `[Action Add Image] Assigning new image '${newImageAssignments[fieldKey]}' to field '${fieldKey}'`
+          );
+          (targetSectionForAssignments as SectionDataType)[fieldKey] =
+            newImageAssignments[fieldKey];
+        }
+      }
+    }
+
     // 3. Выполняем ГЛОБАЛЬНУЮ СИНХРОНИЗАЦИЮ имен изображений
-    // Этот шаг устанавливает правильные *новые* версии для ВСЕХ полей, где было старое имя.
     if (syncNamePairs.length > 0) {
       console.log(
         `[Action Sync] Starting sync for ${syncNamePairs.length} name pair(s).`
@@ -204,31 +262,30 @@ export async function updateSectionContent<
 
     // 4. Применяем данные из ФОРМЫ (sectionDataFromForm) к newAppContent,
     //    обновляя ТОЛЬКО поля, НЕ являющиеся изображениями.
-    const targetSection = newAppContent[pageKey]?.[sectionKey];
-    if (targetSection) {
+    const targetSectionForForm = newAppContent[pageKey]?.[sectionKey];
+    if (targetSectionForForm) {
       for (const key in sectionDataFromForm) {
         if (Object.prototype.hasOwnProperty.call(sectionDataFromForm, key)) {
-          // Если это НЕ поле изображения, обновляем его значением из формы
           if (!isImageField(key)) {
-            // console.log(`Applying form value for NON-IMAGE key: ${key}`);
-            (targetSection as SectionDataType)[key] = sectionDataFromForm[key];
+            (targetSectionForForm as SectionDataType)[key] =
+              sectionDataFromForm[key];
           }
-          // Поля изображений на этом этапе НЕ трогаем! Их значения уже установлены синхронизацией.
         }
       }
 
       // 5. Обрабатываем ОЧИЩЕННЫЕ поля изображений (устанавливаем "")
-      // Делаем это после применения текстовых полей и после синхронизации.
       for (const key in sectionDataFromForm) {
         if (Object.prototype.hasOwnProperty.call(sectionDataFromForm, key)) {
-          // Если поле - изображение, оно пустое в форме и не было загружено новое
           if (
             isImageField(key) &&
-            sectionDataFromForm[key] === "" &&
-            !uploadedImageFieldKeys.includes(key)
+            sectionDataFromForm[key] === "" && // Пользователь очистил поле в форме
+            !uploadedImageFieldKeys.includes(key) // И НЕ загрузил для него новый файл
+            // newImageAssignments[key] уже не нужен здесь, т.к. uploadedImageFieldKeys покрывает это
           ) {
-            console.log(`[Action Clear] Clearing field '${key}' definitively.`);
-            (targetSection as SectionDataType)[key] = ""; // Устанавливаем пустую строку
+            console.log(
+              `[Action Clear] Clearing field '${key}' as per form data (empty and no new upload).`
+            );
+            (targetSectionForForm as SectionDataType)[key] = "";
           }
         }
       }
@@ -241,7 +298,7 @@ export async function updateSectionContent<
     }
 
     // 6. Запись content.json
-    await writeContent(newAppContent); // Записываем финальный результат
+    await writeContent(newAppContent);
 
     // 7. Ревалидация
     revalidatePath(
@@ -249,26 +306,35 @@ export async function updateSectionContent<
     );
     revalidatePath("/admin");
 
-    // Готовим данные для ответа клиенту: берем финальное состояние секции из newAppContent
     const finalSectionState = newAppContent[pageKey]?.[sectionKey];
     const updatedSectionDataForClient = finalSectionState
-      ? normalizeSectionData(finalSectionState) // Нормализуем на всякий случай
-      : sectionDataFromForm; // Резервный вариант - вернуть данные формы
+      ? normalizeSectionData(finalSectionState)
+      : sectionDataFromForm;
 
     return {
       success: true,
       message: `Section '${generateLabel(
         String(sectionKey)
       )}' on page '${pageKey}' updated successfully.`,
-      updatedSection: updatedSectionDataForClient, // Возвращаем актуальное состояние секции
+      updatedSection: updatedSectionDataForClient,
     };
   } catch (error: unknown) {
-    // ... (обработка ошибки и откат) ...
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[Action ERROR] Failed update for ${pageAndSection}:`, error);
-    // Rollback logic...
+
     for (let i = rollbackOps.length - 1; i >= 0; i--) {
-      /* ... */
+      const op = rollbackOps[i];
+      if (op.type === "delete") {
+        try {
+          await fs.unlink(op.filePath);
+          console.log(`[Rollback] Deleted new file: ${op.filePath}`);
+        } catch (rollbackError) {
+          console.error(
+            `[Rollback ERROR] Failed to delete file ${op.filePath}:`,
+            rollbackError
+          );
+        }
+      }
     }
     return {
       success: false,
@@ -279,7 +345,6 @@ export async function updateSectionContent<
 
 // --- Вспомогательные функции ---
 
-// cleanupPathsToBaseNames (без изменений)
 function cleanupPathsToBaseNames(node: unknown): void {
   if (typeof node !== "object" || node === null) return;
   if (Array.isArray(node)) {
@@ -296,8 +361,12 @@ function cleanupPathsToBaseNames(node: unknown): void {
             path.extname(fullFilename)
           );
         } else if (value.includes(".") && !value.startsWith("/")) {
+          // Если это уже имя файла (например, "image.jpg") без префикса API,
+          // также извлекаем базовое имя. Это полезно, если в content.json
+          // случайно оказалось полное имя вместо базового.
           objNode[key] = path.basename(value, path.extname(value));
         }
+        // Если это уже базовое имя (без точки и без префикса), оставляем как есть.
       } else if (typeof value === "object" && value !== null) {
         cleanupPathsToBaseNames(value);
       }
@@ -305,7 +374,6 @@ function cleanupPathsToBaseNames(node: unknown): void {
   }
 }
 
-// syncImageBaseNameAcrossContent (без изменений)
 function syncImageBaseNameAcrossContent(
   node: unknown,
   oldBaseName: string,
@@ -326,7 +394,11 @@ function syncImageBaseNameAcrossContent(
         value === oldBaseName
       ) {
         objNode[key] = newBaseName;
+        console.log(
+          `[Sync Util] Updated '${oldBaseName}' to '${newBaseName}' for key '${key}'`
+        );
       }
+      // Рекурсивный вызов для вложенных объектов
       if (typeof value === "object" && value !== null) {
         syncImageBaseNameAcrossContent(value, oldBaseName, newBaseName);
       }
@@ -337,6 +409,7 @@ function syncImageBaseNameAcrossContent(
 export async function getMediaFilesList(): Promise<string[]> {
   const mediaFolderPathForList = path.join(process.cwd(), "media");
   try {
+    await fs.mkdir(mediaFolderPathForList, { recursive: true }); // Убедимся, что папка существует
     const files = await fs.readdir(mediaFolderPathForList);
     const imageFilesPromises = files.map(async (file) => {
       const filePath = path.join(mediaFolderPathForList, file);
@@ -347,28 +420,37 @@ export async function getMediaFilesList(): Promise<string[]> {
           if (
             [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"].includes(ext)
           ) {
-            return file; // Возвращаем имя файла, если это подходящий файл
+            return file;
           }
         }
       } catch (statError) {
-        // Ошибка получения статов (например, битая ссылка), пропускаем файл
         console.warn(
           `[getMediaFilesList] Error stating file ${filePath}:`,
           statError
         );
         return null;
       }
-      return null; // Не подходящий файл или папка
+      return null;
     });
 
     const resolvedImageFiles = await Promise.all(imageFilesPromises);
-    // Фильтруем null значения (которые были папками, не-изображениями или ошибками)
     const filteredImageFiles = resolvedImageFiles.filter(
       (file): file is string => file !== null
     );
 
-    return filteredImageFiles.sort(); // Сортируем для удобства
+    return filteredImageFiles.sort();
   } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code: string }).code === "ENOENT"
+    ) {
+      console.warn(
+        `[getMediaFilesList] Media folder not found at ${mediaFolderPathForList}. Returning empty list.`
+      );
+      return [];
+    }
     console.error("[getMediaFilesList] Error reading media directory:", error);
     return [];
   }

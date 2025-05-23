@@ -40,11 +40,11 @@ export type SectionDataType = Record<string, string>;
  */
 export interface AppContent {
   "styles": {
-    "section1": {
+    "global": {
       "color1": string;
       "backgroundColor1": string;
     };
-    "section2": {
+    "header": {
       "color2": string;
       "backgroundColor2": string;
     };

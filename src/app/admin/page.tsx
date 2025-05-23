@@ -14,7 +14,7 @@ import Image from "next/image";
 // ----- ТИПЫ -----
 import {
   AppContent,
-  PageKey, // Переименованный SpecificPageKey
+  PageKey,
   SectionKeyForPage,
   SectionDataType,
 } from "@/types/types";
@@ -24,7 +24,8 @@ import { getAdminContent, updateSectionContent } from "./actions";
 import {
   generateLabel,
   isImageField, // Эта функция остается для справки
-  inferInputElement, // ПРЕДПОЛАГАЕМ, ЧТО ЭТА ФУНКЦИЯ ОБНОВЛЕНА И МОЖЕТ ВОЗВРАЩАТЬ "color"
+  inferInputElement,
+  createEmptySectionData, // ПРЕДПОЛАГАЕМ, ЧТО ЭТА ФУНКЦИЯ ОБНОВЛЕНА И МОЖЕТ ВОЗВРАЩАТЬ "color"
 } from "@/lib/content-utils";
 
 // Тип для данных РЕДАКТИРУЕМОЙ СТРАНИЦЫ (ключ секции -> данные секции)
@@ -97,7 +98,7 @@ export default function AdminPage() {
     setSaveError(null);
 
     if (appContent && selectedPageKey) {
-      const pageData = appContent[selectedPageKey];
+      const pageData = appContent[selectedPageKey]; // Тип: AppContent[P]
       if (pageData) {
         const initialEditingData: EditingPageDataType = {};
         // Object.keys(pageData) возвращает string[]
@@ -106,12 +107,69 @@ export default function AdminPage() {
           const sectionKey = sectionKeyAsString as SectionKeyForPage<
             typeof selectedPageKey
           >;
-          // Теперь доступ pageData[sectionKey] типобезопасен
-          initialEditingData[sectionKey] = { ...pageData[sectionKey] }; // Глубокая копия секции
+
+          const sectionContent = pageData[sectionKey]; // Тип: AppContent[P][S]
+
+          // Проверяем, что sectionContent существует и не null/undefined,
+          // чтобы JSON.stringify не вызвал ошибку на таких значениях
+          if (
+            sectionContent !== null &&
+            typeof sectionContent !== "undefined"
+          ) {
+            try {
+              // Глубокое копирование через JSON.stringify и JSON.parse
+              // Это гарантированно создаст новый объект, если sectionContent является объектом.
+              // Если sectionContent - это примитив (хотя не должно быть по вашей структуре),
+              // то JSON.parse(JSON.stringify(primitive)) вернет этот примитив.
+              const copiedSectionContent = JSON.parse(
+                JSON.stringify(sectionContent)
+              );
+
+              // Дополнительная проверка, что результат копирования - это объект,
+              // и он соответствует SectionDataType (Record<string, string>)
+              if (
+                typeof copiedSectionContent === "object" &&
+                copiedSectionContent !== null &&
+                !Array.isArray(copiedSectionContent)
+              ) {
+                initialEditingData[sectionKey] =
+                  copiedSectionContent as SectionDataType;
+              } else {
+                // Если после копирования это не ожидаемый объект (маловероятно для вашей структуры)
+                console.warn(
+                  `[Effect Init Edit Data] Copied content for ${selectedPageKey}.${String(
+                    sectionKey
+                  )} is not a suitable object:`,
+                  copiedSectionContent
+                );
+                initialEditingData[sectionKey] = createEmptySectionData();
+              }
+            } catch (error) {
+              // Ошибка при JSON.parse/stringify (например, если sectionContent содержит циклические ссылки, что не ваш случай)
+              console.error(
+                `[Effect Init Edit Data] Error deep copying content for ${selectedPageKey}.${String(
+                  sectionKey
+                )}:`,
+                error,
+                sectionContent
+              );
+              initialEditingData[sectionKey] = createEmptySectionData();
+            }
+          } else {
+            // sectionContent is null или undefined
+            console.warn(
+              `[Effect Init Edit Data] Content for ${selectedPageKey}.${String(
+                sectionKey
+              )} is null or undefined.`,
+              sectionContent
+            );
+            initialEditingData[sectionKey] = createEmptySectionData();
+          }
         });
         setEditingPageData(initialEditingData);
         console.log(
-          `[Effect Init Edit Data] Initialized editing data for page: ${selectedPageKey}`
+          `[Effect Init Edit Data] Initialized editing data for page: ${selectedPageKey}`,
+          initialEditingData
         );
       } else {
         console.warn(
@@ -127,7 +185,7 @@ export default function AdminPage() {
       );
       setIsLoading(false);
     }
-  }, [selectedPageKey, appContent, isLoading]); // Добавили isLoading
+  }, [selectedPageKey, appContent, isLoading]);
 
   // === Обработчики ===
 

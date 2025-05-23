@@ -62,8 +62,8 @@ async function getStyleVariables(): Promise<string> {
     }
 
     cssVariables += "}\n";
-    console.log("Generated CSS Variables:\n", cssVariables); 
-    
+    // console.log("Generated CSS Variables:\n", cssVariables); 
+
     return cssVariables;
   } catch (error) {
     console.error("Failed to load styles for CSS variables:", error);

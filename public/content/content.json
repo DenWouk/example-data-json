@@ -1,10 +1,10 @@
 {
   "styles": {
-    "section1": {
+    "global": {
       "color1": "",
       "backgroundColor1": "#fbfbfb"
     },
-    "section2": {
+    "header": {
       "color2": "#737373",
       "backgroundColor2": "#fbfbfbce"
     }
@@ -26,12 +26,12 @@
   },
   "about": {
     "section1": {
-      "title": "О нас!!",
+      "title": "О нас!",
       "description1": "Информация о нашей компании 1!",
       "description2": "Информация о нашей компании 2",
       "description3": "Информация о нашей компании 3",
-      "image1": "wolf-grey1_v1",
-      "image2": "wolf-grey1_v1"
+      "image1": "wolf-grey2",
+      "image2": "wolf-grey3"
     }
   }
 }
